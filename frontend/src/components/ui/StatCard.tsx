@@ -11,7 +11,7 @@ interface StatCardProps {
 
 export function StatCard({ title, value, subtitle, icon, trend, trendValue }: StatCardProps) {
   return (
-    <div className="bg-surface border-sentinel rounded-lg p-5 shadow-sm flex flex-col justify-between">
+    <div className="bg-surface border-sentinel rounded-lg p-5 shadow-sm flex flex-col justify-between hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
       <div className="flex justify-between items-start mb-4">
         <h3 className="text-sm font-semibold text-muted uppercase tracking-wider">{title}</h3>
         {icon && <div className="text-muted/50 w-5 h-5">{icon}</div>}

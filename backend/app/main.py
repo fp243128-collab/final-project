@@ -244,6 +244,49 @@ async def ask_assistant(query: AssistantQuery):
     response = query_assistant(query.prompt)
     return {"response": response}
 
+@app.get("/api/resources")
+async def get_resources():
+    return {
+        "resources": [
+            {"id": "aws-s3-prod-assets", "provider": "AWS", "type": "S3 Bucket", "compliance": "Non-Compliant", "risk": "High"},
+            {"id": "aws-ec2-api-web", "provider": "AWS", "type": "EC2 Instance", "compliance": "Compliant", "risk": "Low"},
+            {"id": "aws-rds-main-db", "provider": "AWS", "type": "RDS Database", "compliance": "Compliant", "risk": "Medium"},
+            {"id": "gcp-storage-logs", "provider": "GCP", "type": "Cloud Storage", "compliance": "Compliant", "risk": "Low"},
+        ]
+    }
+
+@app.get("/api/reports")
+async def get_reports():
+    return {
+        "reports": [
+            {"id": "rep-001", "name": "Monthly Executive Summary", "date": "2026-09-01", "type": "Summary"},
+            {"id": "rep-002", "name": "PCI-DSS Compliance Audit", "date": "2026-08-15", "type": "Compliance"},
+            {"id": "rep-003", "name": "Q3 Infrastructure Risk", "date": "2026-07-01", "type": "Risk"},
+        ]
+    }
+
+@app.get("/api/audit-logs")
+async def get_audit_logs():
+    return {
+        "logs": [
+            {"id": "log-1", "time": "2026-09-24 10:15:00", "user": "admin@sentinelx.io", "action": "Resolved Alert ALT-54321", "status": "Success"},
+            {"id": "log-2", "time": "2026-09-24 09:45:12", "user": "system", "action": "Automated CSPM Scan Completed", "status": "Success"},
+            {"id": "log-3", "time": "2026-09-24 08:30:00", "user": "jdoe@sentinelx.io", "action": "Failed Login Attempt", "status": "Failure"},
+            {"id": "log-4", "time": "2026-09-23 16:20:00", "user": "admin@sentinelx.io", "action": "Blocked IP 10.0.0.19", "status": "Success"},
+        ]
+    }
+
+@app.get("/api/settings")
+async def get_settings():
+    return {
+        "integrations": [
+            {"name": "AWS", "status": "Connected", "last_sync": "10 mins ago"},
+            {"name": "Google Cloud", "status": "Connected", "last_sync": "1 hour ago"},
+            {"name": "Azure", "status": "Disconnected", "last_sync": "N/A"},
+            {"name": "Slack", "status": "Connected", "last_sync": "Active"},
+        ]
+    }
+
 @app.get("/api/alerts")
 async def get_alerts(session: Session = Depends(get_session)):
     alerts = session.exec(select(Alert).order_by(Alert.time.desc())).all()

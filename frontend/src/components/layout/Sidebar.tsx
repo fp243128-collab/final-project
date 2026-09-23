@@ -10,7 +10,8 @@ import {
   FileText,
   Settings,
   Shield,
-  FileSearch
+  FileSearch,
+  LogOut
 } from "lucide-react";
 
 export function Sidebar() {
@@ -80,6 +81,12 @@ export function Sidebar() {
           <div className="space-y-1">
             <NavItem href="/audit-logs" icon={<FileText />} label="Audit Logs" />
             <NavItem href="/settings" icon={<Settings />} label="Settings" />
+          </div>
+        </div>
+
+        <div className="pt-6 border-t border-border/10">
+          <div className="space-y-1">
+            <NavItem href="/login" icon={<LogOut className="text-red-500" />} label="Sign Out" />
           </div>
         </div>
       </nav>

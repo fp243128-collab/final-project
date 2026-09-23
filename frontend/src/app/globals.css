@@ -18,8 +18,8 @@
   --primary-foreground: #FFFFFF;
   
   /* Sidebar */
-  --sidebar-bg: #0F172A;
-  --sidebar-fg: #FFFFFF;
+  --sidebar-bg: #FFFFFF;
+  --sidebar-fg: #0F172A;
   
   /* Semantic */
   --success: #16A34A;
@@ -60,6 +60,10 @@
 
 /* NO DARK MODE PER SPEC */
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
@@ -69,9 +73,41 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Utilities for common strict styles */
+/* Utilities for common strict styles and animations */
 @layer utilities {
   .border-sentinel {
     border: 1px solid var(--border);
   }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out forwards;
+  }
+  
+  .animate-slide-in-right {
+    animation: slideInRight 0.4s ease-out forwards;
+  }
+  
+  .stagger-1 { animation-delay: 50ms; }
+  .stagger-2 { animation-delay: 100ms; }
+  .stagger-3 { animation-delay: 150ms; }
+  .stagger-4 { animation-delay: 200ms; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Bell, Search, User } from "lucide-react";
 
 export function Topbar() {
@@ -24,9 +25,9 @@ export function Topbar() {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-critical rounded-full border border-surface"></span>
         </button>
         
-        <div className="w-8 h-8 rounded-full bg-primary/10 border-sentinel flex items-center justify-center text-primary font-medium text-sm">
+        <Link href="/settings" className="w-8 h-8 rounded-full bg-primary/10 hover:bg-primary/20 border-sentinel flex items-center justify-center text-primary font-medium text-sm transition-colors cursor-pointer">
           <User className="w-4 h-4" />
-        </div>
+        </Link>
       </div>
     </header>
   );
