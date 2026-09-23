@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+:root {
+  /* Page background */
+  --background: #FFFFFF;
+  
+  /* Primary Text */
+  --foreground: #0F172A;
+  
+  /* Secondary/muted text */
+  --muted: #64748B;
+  
+  /* Borders/dividers */
+  --border: #E2E8F0;
+  
+  /* Accent/primary action */
+  --primary: #2563EB;
+  --primary-foreground: #FFFFFF;
+  
+  /* Sidebar */
+  --sidebar-bg: #0F172A;
+  --sidebar-fg: #FFFFFF;
+  
+  /* Semantic */
+  --success: #16A34A;
+  --warning: #D97706;
+  --critical: #DC2626;
+  --info: #0284C7;
+  
+  /* Surface (cards) */
+  --surface: #FFFFFF;
+  
+  /* Custom shadow allowed by spec */
+  --shadow-sentinel: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-foreground: var(--sidebar-fg);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-critical: var(--critical);
+  --color-info: var(--info);
+  --color-surface: var(--surface);
+  
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  
+  --shadow-sm: var(--shadow-sentinel);
+  --shadow-md: var(--shadow-sentinel);
+  --shadow-lg: var(--shadow-sentinel);
+  --shadow-xl: var(--shadow-sentinel);
+}
+
+/* NO DARK MODE PER SPEC */
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), sans-serif;
+  /* Applying antialiased to text */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Utilities for common strict styles */
+@layer utilities {
+  .border-sentinel {
+    border: 1px solid var(--border);
+  }
+}
