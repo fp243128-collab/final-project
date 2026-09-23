@@ -171,11 +171,40 @@ async def trigger_cspm_scan():
 
 from app.models.core import PipelineRun
 from app.devsecops.service import simulate_pipeline_run, seed_initial_runs
+from app.monitoring.service import get_and_generate_latest_metrics, seed_historical_metrics
 
 @app.on_event("startup")
 def on_startup():
     # Keep the existing init_db if any, and call seed_initial_runs
     seed_initial_runs()
+    seed_historical_metrics()
+
+@app.get("/api/monitoring/metrics")
+async def get_metrics(session: Session = Depends(get_session)):
+    metrics = get_and_generate_latest_metrics(session)
+    return {
+        "metrics": [
+            {
+                "time": m.time.isoformat(),
+                "cpu_usage": m.cpu_usage,
+                "memory_usage": m.memory_usage,
+                "network_rx": m.network_rx,
+                "network_tx": m.network_tx,
+                "api_latency": m.api_latency
+            }
+            for m in metrics
+        ]
+    }
+
+@app.get("/api/monitoring/health")
+async def get_health():
+    import random
+    return {
+        "uptime": "99.98%",
+        "active_containers": 12,
+        "error_rate": f"{round(random.uniform(0.1, 1.5), 2)}%",
+        "status": "Healthy"
+    }
 
 @app.get("/api/devsecops/runs")
 async def get_pipeline_runs(session: Session = Depends(get_session)):
