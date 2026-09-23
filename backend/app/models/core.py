@@ -55,3 +55,12 @@ class SystemStats(SQLModel, table=True):
     critical_trend_value: str
     cloud_trend: str
     cloud_trend_value: str
+
+class Alert(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    time: datetime = Field(default_factory=utc_now)
+    title: str
+    severity: str
+    source: str
+    message: str
+    status: str = Field(default="Active")

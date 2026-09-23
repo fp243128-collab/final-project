@@ -61,6 +61,15 @@ async def get_overview(session: Session = Depends(get_session)):
                 "status": evt.status,
             }
             for evt in events
+        ],
+        "risk_trend": [
+            {"date": "Mon", "score": 65},
+            {"date": "Tue", "score": 68},
+            {"date": "Wed", "score": 75},
+            {"date": "Thu", "score": 72},
+            {"date": "Fri", "score": 85},
+            {"date": "Sat", "score": 78},
+            {"date": "Sun", "score": 74}
         ]
     }
 
@@ -169,12 +178,31 @@ async def trigger_cspm_scan():
     run_cspm_scan()
     return {"status": "success", "message": "CSPM Scan completed"}
 
-from app.models.core import PipelineRun
+from app.models.core import PipelineRun, Alert
 from app.devsecops.service import simulate_pipeline_run, seed_initial_runs
 from app.monitoring.service import get_and_generate_latest_metrics, seed_historical_metrics
+import uuid
+import random
+from datetime import datetime, timezone, timedelta
+from app.database import engine
+
+def seed_alerts(session: Session):
+    existing = session.exec(select(Alert)).first()
+    if existing:
+        return
+    now = datetime.now(timezone.utc)
+    alerts = [
+        Alert(id=f"ALT-{str(uuid.uuid4())[:8]}", time=now - timedelta(minutes=2), title="Port scan detected", severity="Critical", source="AI IDS", message="Repeated connection attempts across multiple ports from IP 192.168.1.105."),
+        Alert(id=f"ALT-{str(uuid.uuid4())[:8]}", time=now - timedelta(minutes=5), title="Brute force detected", severity="High", source="AI IDS", message="Multiple failed login attempts to SSH from unknown external IP."),
+        Alert(id=f"ALT-{str(uuid.uuid4())[:8]}", time=now - timedelta(minutes=18), title="Public resource", severity="Medium", source="CSPM", message="S3 Bucket 'production-assets' allows public read access."),
+    ]
+    session.add_all(alerts)
+    session.commit()
 
 @app.on_event("startup")
 def on_startup():
+    with Session(engine) as session:
+        seed_alerts(session)
     # Keep the existing init_db if any, and call seed_initial_runs
     seed_initial_runs()
     seed_historical_metrics()
@@ -193,6 +221,80 @@ async def get_metrics(session: Session = Depends(get_session)):
                 "api_latency": m.api_latency
             }
             for m in metrics
+        ]
+    }
+
+@app.get("/api/monitoring/health")
+async def get_health():
+    import random
+    return {
+        "uptime": "99.98%",
+        "active_containers": 12,
+        "error_rate": f"{round(random.uniform(0.1, 1.5), 2)}%",
+        "status": "Healthy"
+    }
+
+class AssistantQuery(BaseModel):
+    prompt: str
+
+from app.assistant.service import query_assistant
+
+@app.post("/api/assistant/query")
+async def ask_assistant(query: AssistantQuery):
+    response = query_assistant(query.prompt)
+    return {"response": response}
+
+@app.get("/api/alerts")
+async def get_alerts(session: Session = Depends(get_session)):
+    alerts = session.exec(select(Alert).order_by(Alert.time.desc())).all()
+    return {"alerts": alerts}
+
+@app.post("/api/alerts/resolve/{alert_id}")
+async def resolve_alert(alert_id: str, session: Session = Depends(get_session)):
+    alert = session.get(Alert, alert_id)
+    if alert:
+        alert.status = "Resolved"
+        session.add(alert)
+        session.commit()
+    return {"status": "success"}
+
+@app.get("/api/risk")
+async def get_risk():
+    return {
+        "overall_risk": 74,
+        "breakdown": {
+            "threat_risk": 32,
+            "cloud_risk": 24,
+            "iam_risk": 9,
+            "infra_risk": 14
+        },
+        "top_assets": [
+            {"name": "production-api", "score": 91},
+            {"name": "production-db", "score": 76},
+            {"name": "public-assets", "score": 73}
+        ]
+    }
+
+@app.get("/api/analytics")
+async def get_analytics():
+    # Generate mock historical trend data
+    now = datetime.now(timezone.utc)
+    trend = []
+    for i in range(30, 0, -1):
+        t = now - timedelta(days=i)
+        trend.append({
+            "date": t.strftime("%Y-%m-%d"),
+            "critical": random.randint(0, 5),
+            "high": random.randint(2, 10),
+            "medium": random.randint(5, 20)
+        })
+    return {
+        "trend": trend,
+        "severity_distribution": [
+            {"name": "Critical", "value": 12},
+            {"name": "High", "value": 35},
+            {"name": "Medium", "value": 89},
+            {"name": "Low", "value": 124}
         ]
     }
 
