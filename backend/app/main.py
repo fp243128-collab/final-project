@@ -393,6 +393,17 @@ async def ask_assistant(query: AssistantQuery, session: Session = Depends(get_se
     result = query_assistant(query.prompt, session=session)
     return result
 
+@app.get("/api/assistant/status")
+async def assistant_status():
+    import os
+    k = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENAI_API_KEY") or "").strip()
+    return {
+        "gemini_api_key_configured": bool(k),
+        "key_length": len(k) if k else 0,
+        "key_prefix": k[:6] + "..." if len(k) >= 6 else None
+    }
+
+
 @app.get("/api/resources")
 async def get_resources():
     return {

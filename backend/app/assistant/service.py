@@ -56,7 +56,12 @@ def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str,
     Tries Google GenAI models (gemini-2.5-flash / gemini-3.7-flash) if GEMINI_API_KEY is present.
     Gracefully falls back to high-fidelity rule heuristics if API fails or key is missing.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = (
+        os.getenv("GEMINI_API_KEY") 
+        or os.getenv("GOOGLE_API_KEY") 
+        or os.getenv("GOOGLE_GENAI_API_KEY") 
+        or ""
+    ).strip()
     db_context = assemble_context(session) if session else ""
     
     if api_key:

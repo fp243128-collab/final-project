@@ -26,9 +26,24 @@ export default function AssistantPage() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [keyStatus, setKeyStatus] = useState<{ configured: boolean; prefix?: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/assistant/status`)
+      .then(res => res.json())
+      .then(data => {
+        setKeyStatus({
+          configured: !!data.gemini_api_key_configured,
+          prefix: data.key_prefix
+        });
+      })
+      .catch(() => setKeyStatus({ configured: false }));
+  }, []);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
 
   useEffect(() => {
     scrollToBottom();
@@ -187,11 +202,24 @@ export default function AssistantPage() {
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs text-muted bg-surface border border-border rounded-md px-3 py-1.5">
-          <Shield className="w-3.5 h-3.5 text-primary" />
-          <span>Telemetry Context Active</span>
+        <div className="flex items-center gap-2">
+          {keyStatus !== null && (
+            <div className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md border ${
+              keyStatus.configured 
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                : 'bg-amber-50 text-amber-800 border-amber-300'
+            }`}>
+              <Sparkles className={`w-3.5 h-3.5 ${keyStatus.configured ? 'text-emerald-600' : 'text-amber-600'}`} />
+              <span>{keyStatus.configured ? `Gemini Live Active (${keyStatus.prefix})` : 'Gemini Key Missing on Backend'}</span>
+            </div>
+          )}
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted bg-surface border border-border rounded-md px-3 py-1.5">
+            <Shield className="w-3.5 h-3.5 text-primary" />
+            <span>Telemetry Context Active</span>
+          </div>
         </div>
       </div>
+
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-gray-50/50">
