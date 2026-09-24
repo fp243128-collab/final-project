@@ -65,14 +65,10 @@ def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str,
     db_context = assemble_context(session) if session else ""
     
     if api_key:
-        # Try candidate models in order of availability
-        candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.7-flash"]
+        candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
         last_error = None
-        for model_name in candidate_models:
-            try:
-                from google import genai
-                client = genai.Client(api_key=api_key)
-                full_prompt = f"""Context from SentinelX Platform:
+
+        full_prompt = f"""Context from SentinelX Platform:
 ```json
 {db_context}
 ```
@@ -80,6 +76,12 @@ def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str,
 User Query:
 {prompt}
 """
+
+        # Method 1: Try google-genai SDK
+        for model_name in candidate_models:
+            try:
+                from google import genai
+                client = genai.Client(api_key=api_key)
                 response = client.models.generate_content(
                     model=model_name,
                     contents=full_prompt,
@@ -96,12 +98,67 @@ User Query:
                     }
             except Exception as e:
                 last_error = str(e)
-                logger.warning(f"Model {model_name} failed: {e}. Trying next candidate.")
+                logger.warning(f"SDK call with {model_name} failed: {e}")
                 continue
-        
-        # If API key was provided but all models threw exceptions, inform the user
+
+        # Method 2: Direct Google Generative Language REST API with httpx (no SDK dependency)
+        import httpx
+        for model_name in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                payload = {
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{full_prompt}"}]
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "maxOutputTokens": 2048
+                    }
+                }
+                res = httpx.post(url, json=payload, timeout=20.0)
+                if res.status_code == 200:
+                    resp_json = res.json()
+                    candidates = resp_json.get("candidates", [])
+                    if candidates:
+                        text_part = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        if text_part:
+                            return {
+                                "response": text_part,
+                                "engine": f"Google {model_name} (Direct REST API)",
+                                "context_injected": bool(db_context)
+                            }
+                else:
+                    last_error = f"HTTP {res.status_code}: {res.text}"
+                    logger.warning(f"REST API with {model_name} failed: {res.status_code} - {res.text}")
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"REST call error: {e}")
+
+        # If API key was provided but failed, ALWAYS show the error directly to the user
         if last_error:
-            logger.error(f"Gemini API calls failed: {last_error}")
+            logger.error(f"All Gemini attempts failed: {last_error}")
+            return {
+                "response": f"""⚠️ **Gemini API Call Failed:**  
+`{last_error}`
+
+---
+**Why this happens:**
+1. Check that your Google AI Studio key is active and has billing/quota enabled at https://aistudio.google.com/
+2. Ensure there are no spaces or quotes around the key in Railway.
+3. Your key may have restrictions or require `gemini-1.5-flash` specifically.
+
+---
+*(Falling back to local security analysis)*:
+I can analyze your active findings, explain detections, and generate Terraform or AWS CLI remediation commands.""",
+                "engine": "SentinelX Copilot (Gemini Error Fallback)",
+                "context_injected": bool(db_context),
+                "api_key_configured": True,
+                "last_error": last_error
+            }
+
 
     lower_p = prompt.lower()
     
