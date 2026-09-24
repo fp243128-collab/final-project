@@ -18,8 +18,13 @@ COPY . .
 # Next.js telemetry is disabled
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# If using standalone mode in next.config.mjs, this builds the server
+# Next.js inlines NEXT_PUBLIC_* variables at build time!
+ARG NEXT_PUBLIC_API_URL="https://backend-production-8135.up.railway.app"
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+# Build the Next.js standalone bundle
 RUN npm run build
+
 
 # Production image, copy all the files and run next
 FROM base AS runner
