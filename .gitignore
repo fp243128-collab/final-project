@@ -20,7 +20,14 @@ wheels/
 .installed.cfg
 *.egg
 
+# Local Database files
+*.db
+*.sqlite
+*.sqlite3
+sentinelx.db
+
 # Virtual Environments
+
 venv/
 env/
 ENV/
