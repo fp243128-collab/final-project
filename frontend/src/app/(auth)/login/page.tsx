@@ -3,24 +3,55 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { API_URL } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Invalid login credentials");
+      }
+
+      // Store authenticated session
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sentinelx_token", data.token);
+        localStorage.setItem("sentinelx_user", JSON.stringify(data.user));
+      }
+
       router.push("/overview");
-    }, 600);
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to sign in. Please verify your credentials.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <form className="space-y-6" onSubmit={handleLogin}>
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">
+          {errorMessage}
+        </div>
+      )}
+
       <div>
         <label
           htmlFor="email"

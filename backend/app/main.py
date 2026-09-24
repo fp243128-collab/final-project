@@ -46,6 +46,80 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import hashlib
+import secrets
+from app.models.core import User
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+from pydantic import BaseModel, EmailStr
+from fastapi import HTTPException, status
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/register")
+async def register(req: RegisterRequest, session: Session = Depends(get_session)):
+    clean_email = req.email.strip().lower()
+    if not clean_email or not req.password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+    
+    # Check if user already exists
+    existing = session.exec(select(User).where(User.email == clean_email)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists")
+    
+    new_user = User(
+        name=req.name.strip() or "Security Analyst",
+        email=clean_email,
+        hashed_password=hash_password(req.password)
+    )
+    session.add(new_user)
+    session.commit()
+    session.refresh(new_user)
+    
+    # Return auth token and user profile
+    token = secrets.token_hex(24)
+    return {
+        "status": "success",
+        "message": "Account created successfully",
+        "token": token,
+        "user": {
+            "id": new_user.id,
+            "name": new_user.name,
+            "email": new_user.email
+        }
+    }
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest, session: Session = Depends(get_session)):
+    clean_email = req.email.strip().lower()
+    hashed = hash_password(req.password)
+    
+    user = session.exec(select(User).where(User.email == clean_email, User.hashed_password == hashed)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = secrets.token_hex(24)
+    return {
+        "status": "success",
+        "message": "Login successful",
+        "token": token,
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
+    }
+
+
 @app.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket)

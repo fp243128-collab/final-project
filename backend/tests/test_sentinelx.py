@@ -72,3 +72,47 @@ def test_alerts_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert "alerts" in data
+
+def test_auth_register_and_login():
+    import uuid
+    test_email = f"analyst_{uuid.uuid4().hex[:6]}@sentinelx.io"
+    test_pass = "Security123!"
+
+    # 1. Register
+    reg_resp = client.post("/api/auth/register", json={
+        "name": "Alex Mercer",
+        "email": test_email,
+        "password": test_pass
+    })
+    assert reg_resp.status_code == 200
+    reg_data = reg_resp.json()
+    assert reg_data["status"] == "success"
+    assert "token" in reg_data
+    assert reg_data["user"]["email"] == test_email
+
+    # 2. Duplicate registration should fail
+    dup_resp = client.post("/api/auth/register", json={
+        "name": "Alex Mercer",
+        "email": test_email,
+        "password": test_pass
+    })
+    assert dup_resp.status_code == 400
+
+    # 3. Successful Login
+    login_resp = client.post("/api/auth/login", json={
+        "email": test_email,
+        "password": test_pass
+    })
+    assert login_resp.status_code == 200
+    login_data = login_resp.json()
+    assert login_data["status"] == "success"
+    assert "token" in login_data
+    assert login_data["user"]["name"] == "Alex Mercer"
+
+    # 4. Failed Login with wrong password
+    bad_login = client.post("/api/auth/login", json={
+        "email": test_email,
+        "password": "WrongPassword!"
+    })
+    assert bad_login.status_code == 401
+
