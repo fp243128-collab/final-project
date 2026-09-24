@@ -53,17 +53,20 @@ def assemble_context(session: Optional[Session] = None) -> str:
 def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str, Any]:
     """
     Queries SentinelX AI.
-    If GEMINI_API_KEY is present, calls the Google GenAI SDK (gemini-3.7-flash).
-    Otherwise, gracefully falls back to structured expert cybersecurity heuristics.
+    Tries Google GenAI models (gemini-2.5-flash / gemini-3.7-flash) if GEMINI_API_KEY is present.
+    Gracefully falls back to high-fidelity rule heuristics if API fails or key is missing.
     """
     api_key = os.getenv("GEMINI_API_KEY")
     db_context = assemble_context(session) if session else ""
     
     if api_key:
-        try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            full_prompt = f"""Context from SentinelX Platform:
+        # Try candidate models in order of availability
+        candidate_models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"]
+        for model_name in candidate_models:
+            try:
+                from google import genai
+                client = genai.Client(api_key=api_key)
+                full_prompt = f"""Context from SentinelX Platform:
 ```json
 {db_context}
 ```
@@ -71,21 +74,23 @@ def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str,
 User Query:
 {prompt}
 """
-            response = client.models.generate_content(
-                model="gemini-3.7-flash",
-                contents=full_prompt,
-                config={
-                    "system_instruction": SYSTEM_PROMPT,
-                    "temperature": 0.2
-                }
-            )
-            return {
-                "response": response.text,
-                "engine": "Gemini 3.7 Flash (Live LLM)",
-                "context_injected": bool(db_context)
-            }
-        except Exception as e:
-            logger.error(f"Gemini API invocation failed: {e}. Falling back to rule-based engine.")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=full_prompt,
+                    config={
+                        "system_instruction": SYSTEM_PROMPT,
+                        "temperature": 0.2
+                    }
+                )
+                if response and response.text:
+                    return {
+                        "response": response.text,
+                        "engine": f"Google {model_name} (Live Cloud LLM)",
+                        "context_injected": bool(db_context)
+                    }
+            except Exception as e:
+                logger.warning(f"Model {model_name} failed: {e}. Trying next candidate.")
+                continue
 
     # High-quality offline / rule-based fallback with real DB context integration
     lower_p = prompt.lower()
@@ -183,7 +188,7 @@ I am connected to the SentinelX real-time database and threat telemetry. Here is
 - **Generate Terraform / CLI Fixes:** Request exact remediation syntax for your cloud resources.
 - **Security Audit:** Inquire *"Give me a summary of current open findings"*.
 
-*(Tip: Set `GEMINI_API_KEY` in your environment or backend settings to enable live multi-turn Gemini 3.7 Flash generation).*"""
+*(Tip: Set `GEMINI_API_KEY` in your environment or backend settings to enable live multi-turn Gemini generation).*"""
 
     return {
         "response": content,
