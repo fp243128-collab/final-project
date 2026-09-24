@@ -37,10 +37,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SentinelX API", lifespan=lifespan)
 
-# Configure CORS so the Next.js frontend can communicate with FastAPI
+# Configure CORS so the Next.js frontend (local or deployed) can communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

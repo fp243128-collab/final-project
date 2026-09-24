@@ -1,0 +1,25 @@
+# Railway Configuration for SentinelX Multi-Service Deployment
+# Deploy frontend & backend seamlessly on Railway
+
+version: 2
+
+services:
+  backend:
+    source:
+      rootDirectory: backend
+    build:
+      dockerfilePath: Dockerfile
+    deploy:
+      numReplicas: 1
+      restartPolicyType: ON_FAILURE
+      healthcheckPath: /api/monitoring/health
+      healthcheckTimeout: 100
+
+  frontend:
+    source:
+      rootDirectory: frontend
+    build:
+      dockerfilePath: Dockerfile
+    deploy:
+      numReplicas: 1
+      restartPolicyType: ON_FAILURE

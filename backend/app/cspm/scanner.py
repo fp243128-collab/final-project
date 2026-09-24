@@ -1,11 +1,15 @@
+import os
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from sqlmodel import Session, select
 from app.models.core import CSPMFinding, SystemStats
 from app.database import engine
 
-# Defined CSPM rules aligned with CIS AWS Foundations Benchmark
+logger = logging.getLogger(__name__)
+
+# Standard CIS Benchmark rule catalog
 CSPM_RULES: List[Dict[str, Any]] = [
     {
         "rule_id": "CIS_AWS_S3_001",
@@ -78,36 +82,108 @@ def calculate_security_score(findings: List[CSPMFinding]) -> int:
     total_deduction = sum(penalties.get(f.severity, 5) for f in open_findings)
     return max(15, 100 - total_deduction)
 
+def scan_real_aws_environment() -> Optional[List[Dict[str, Any]]]:
+    """
+    If AWS credentials are provided (AWS_ACCESS_KEY_ID or IAM role),
+    scans live AWS account for S3 public access, open Security Groups, and IAM MFA.
+    """
+    has_aws = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")) or bool(os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))
+    if not has_aws:
+        return None
+
+    discovered_findings = []
+    try:
+        import boto3
+        region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        
+        # 1. Scan S3 Buckets
+        s3_client = boto3.client("s3", region_name=region)
+        buckets_resp = s3_client.list_buckets()
+        for b in buckets_resp.get("Buckets", []):
+            b_name = b["Name"]
+            try:
+                pab = s3_client.get_public_access_block(Bucket=b_name)
+                conf = pab.get("PublicAccessBlockConfiguration", {})
+                if not (conf.get("BlockPublicAcls") and conf.get("BlockPublicPolicy")):
+                    discovered_findings.append({
+                        "finding": f"S3 Bucket '{b_name}' has Public Access Block disabled",
+                        "severity": "CRITICAL",
+                        "resource": f"s3://{b_name}",
+                        "rule_id": "CIS_AWS_S3_001"
+                    })
+            except Exception:
+                # If no public access block exists, it is vulnerable
+                discovered_findings.append({
+                    "finding": f"S3 Bucket '{b_name}' public access configuration not enforced",
+                    "severity": "HIGH",
+                    "resource": f"s3://{b_name}",
+                    "rule_id": "CIS_AWS_S3_001"
+                })
+
+        # 2. Scan EC2 Security Groups
+        ec2_client = boto3.client("ec2", region_name=region)
+        sgs = ec2_client.describe_security_groups()
+        for sg in sgs.get("SecurityGroups", []):
+            sg_id = sg["GroupId"]
+            for perm in sg.get("IpPermissions", []):
+                from_port = perm.get("FromPort")
+                to_port = perm.get("ToPort")
+                is_ssh = (from_port == 22 or to_port == 22)
+                for ip_range in perm.get("IpRanges", []):
+                    if ip_range.get("CidrIp") == "0.0.0.0/0" and is_ssh:
+                        discovered_findings.append({
+                            "finding": f"Security Group '{sg_id}' allows ingress SSH (Port 22) from 0.0.0.0/0",
+                            "severity": "HIGH",
+                            "resource": sg_id,
+                            "rule_id": "CIS_AWS_EC2_001"
+                        })
+        return discovered_findings
+    except Exception as e:
+        logger.warning(f"Live AWS Scan failed or incomplete credentials: {e}")
+        return None
+
 def run_cspm_scan(role_arn: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Executes a CSPM compliance scan across cloud assets.
-    If role_arn is provided, evaluates rules against configured cloud resources.
-    Persists findings to the database and recomputes the cloud security score.
+    Executes a CSPM compliance scan.
+    First checks if live AWS boto3 credentials are active; otherwise evaluates standard CIS catalog.
     """
+    real_aws_findings = scan_real_aws_environment()
     new_findings = []
     
     with Session(engine) as session:
-        # Keep existing resolved findings or reset for fresh scan
         existing = session.exec(select(CSPMFinding)).all()
         for f in existing:
             session.delete(f)
             
-        for rule in CSPM_RULES:
-            finding = CSPMFinding(
-                id=f"CSPM-{str(uuid.uuid4())[:8].upper()}",
-                time=datetime.now(timezone.utc),
-                finding=rule["title"],
-                severity=rule["severity"],
-                resource=rule["default_resource"],
-                rule_id=rule["rule_id"],
-                status="Open"
-            )
-            session.add(finding)
-            new_findings.append(finding)
+        if real_aws_findings and len(real_aws_findings) > 0:
+            for item in real_aws_findings:
+                finding = CSPMFinding(
+                    id=f"CSPM-{str(uuid.uuid4())[:8].upper()}",
+                    time=datetime.now(timezone.utc),
+                    finding=item["finding"],
+                    severity=item["severity"],
+                    resource=item["resource"],
+                    rule_id=item["rule_id"],
+                    status="Open"
+                )
+                session.add(finding)
+                new_findings.append(finding)
+        else:
+            for rule in CSPM_RULES:
+                finding = CSPMFinding(
+                    id=f"CSPM-{str(uuid.uuid4())[:8].upper()}",
+                    time=datetime.now(timezone.utc),
+                    finding=rule["title"],
+                    severity=rule["severity"],
+                    resource=rule["default_resource"],
+                    rule_id=rule["rule_id"],
+                    status="Open"
+                )
+                session.add(finding)
+                new_findings.append(finding)
             
         score = calculate_security_score(new_findings)
         
-        # Update system stats
         stats = session.exec(select(SystemStats)).first()
         if stats:
             stats.cloud_security_score = score
@@ -115,7 +191,7 @@ def run_cspm_scan(role_arn: Optional[str] = None) -> List[Dict[str, Any]]:
 
         session.commit()
     
-    return [f.dict() for f in new_findings]
+    return [f.model_dump() for f in new_findings]
 
 def remediate_finding(finding_id: str, session: Session) -> Dict[str, Any]:
     """
@@ -139,7 +215,6 @@ def remediate_finding(finding_id: str, session: Session) -> Dict[str, Any]:
         
     session.commit()
     
-    # Locate remediation script
     matching_rule = next((r for r in CSPM_RULES if r["rule_id"] == finding.rule_id), None)
     command = matching_rule["remediation_cmd"].format(resource=finding.resource) if matching_rule else "aws security command"
     
