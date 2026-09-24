@@ -106,13 +106,9 @@ def trigger_pipeline_scan(
     }
 
 def simulate_pipeline_run():
-    return trigger_pipeline_scan(developer="automated-ci@github-actions", branch="main")["run"]
+    return trigger_pipeline_scan(developer="github-actions@ci", branch="main")["run"]
 
 def seed_initial_runs():
-    with Session(engine) as session:
-        existing = session.exec(select(PipelineRun)).first()
-        if existing:
-            return
-            
-    for dev in ["alice@sentinelx.ai", "bob@sentinelx.ai", "ci-bot"]:
-        trigger_pipeline_scan(developer=dev, branch="main")
+    # Only real webhook pipeline executions will be recorded
+    pass
+

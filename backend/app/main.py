@@ -419,17 +419,9 @@ from datetime import datetime, timezone, timedelta
 from app.database import engine
 
 def seed_alerts(session: Session):
-    existing = session.exec(select(Alert)).first()
-    if existing:
-        return
-    now = datetime.now(timezone.utc)
-    alerts = [
-        Alert(id=f"ALT-{str(uuid.uuid4())[:8]}", time=now - timedelta(minutes=2), title="Port scan detected", severity="Critical", source="AI IDS", message="Repeated connection attempts across multiple ports from IP 192.168.1.105."),
-        Alert(id=f"ALT-{str(uuid.uuid4())[:8]}", time=now - timedelta(minutes=5), title="Brute force detected", severity="High", source="AI IDS", message="Multiple failed login attempts to SSH from unknown external IP."),
-        Alert(id=f"ALT-{str(uuid.uuid4())[:8]}", time=now - timedelta(minutes=18), title="Public resource", severity="Medium", source="CSPM", message="S3 Bucket 'production-assets' allows public read access."),
-    ]
-    session.add_all(alerts)
-    session.commit()
+    # Only real alerts triggered by AI IDS or CSPM live scans are recorded
+    pass
+
 
 @app.on_event("startup")
 def on_startup():
