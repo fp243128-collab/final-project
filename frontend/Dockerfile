@@ -50,9 +50,7 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
-# set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
+ENV HOSTNAME="0.0.0.0"
 
-# server.js is created by next build from the standalone output
-CMD ["node", "server.js"]
+# server.js is created by next build from the standalone output with dynamic Railway PORT
+CMD ["sh", "-c", "PORT=${PORT:-3000} node server.js"]
