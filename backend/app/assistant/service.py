@@ -61,7 +61,8 @@ def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str,
     
     if api_key:
         # Try candidate models in order of availability
-        candidate_models = ["gemini-2.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"]
+        candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.7-flash"]
+        last_error = None
         for model_name in candidate_models:
             try:
                 from google import genai
@@ -89,10 +90,14 @@ User Query:
                         "context_injected": bool(db_context)
                     }
             except Exception as e:
+                last_error = str(e)
                 logger.warning(f"Model {model_name} failed: {e}. Trying next candidate.")
                 continue
+        
+        # If API key was provided but all models threw exceptions, inform the user
+        if last_error:
+            logger.error(f"Gemini API calls failed: {last_error}")
 
-    # High-quality offline / rule-based fallback with real DB context integration
     lower_p = prompt.lower()
     
     if "s3" in lower_p or "bucket" in lower_p or "public" in lower_p:
@@ -180,18 +185,46 @@ SentinelX telemetry and database records currently show:
 3. Verify MFA enforcement on root and IAM power-users."""
 
     else:
-        content = f"""I am **SentinelX AI**, your SecOps & Cloud Security intelligence assistant.
+        if api_key and last_error:
+            content = f"""⚠️ **Gemini API Error Encountered:**  
+`{last_error}`
+
+---
+
+I am **SentinelX AI**, running on local security intelligence heuristics.
+I can analyze your active findings, explain threat detections, and generate Terraform or AWS CLI remediation commands:
+- **Explain Detections:** Ask *"Explain the SSH Brute Force alert"* or *"What is port scanning?"*
+- **CSPM Analysis:** Ask *"Why is public S3 risky?"* or *"How to fix open security group port 22?"*
+- **Generate Terraform / CLI Fixes:** Request exact remediation syntax for your cloud resources.
+- **Security Audit:** Inquire *"Give me a summary of current open findings"*.
+"""
+        elif not api_key:
+            content = f"""I am **SentinelX AI**, your SecOps & Cloud Security intelligence assistant.
+
+*(Notice: `GEMINI_API_KEY` is not detected in your Backend environment variables on Railway. Add `GEMINI_API_KEY` under Railway Backend Settings -> Variables to activate live Gemini AI responses).*
+
+---
+**What I can do for you right now:**
+- **Explain Detections:** Ask about specific attacks like *"Explain the SSH Brute Force alert"* or *"What is port scanning?"*
+- **CSPM Analysis:** Ask *"Why is public S3 risky?"* or *"How to fix open security group port 22?"*
+- **Generate Terraform / CLI Fixes:** Request exact remediation syntax for your cloud resources.
+- **Security Audit:** Inquire *"Give me a summary of current open findings"*.
+"""
+        else:
+            content = f"""I am **SentinelX AI**, your SecOps & Cloud Security intelligence assistant.
 
 I am connected to the SentinelX real-time database and threat telemetry. Here is what I can do for you:
 - **Explain Detections:** Ask about specific attacks like *"Explain the SSH Brute Force alert"* or *"What is port scanning?"*
 - **CSPM Analysis:** Ask *"Why is public S3 risky?"* or *"How to fix open security group port 22?"*
 - **Generate Terraform / CLI Fixes:** Request exact remediation syntax for your cloud resources.
 - **Security Audit:** Inquire *"Give me a summary of current open findings"*.
-
-*(Tip: Set `GEMINI_API_KEY` in your environment or backend settings to enable live multi-turn Gemini generation).*"""
+"""
 
     return {
         "response": content,
-        "engine": "SentinelX Security Copilot (Heuristics + Telemetry Context)",
-        "context_injected": bool(db_context)
+        "engine": "SentinelX Security Copilot (Heuristics + Telemetry Context)" if not (api_key and not last_error) else "Google Gemini",
+        "context_injected": bool(db_context),
+        "api_key_configured": bool(api_key),
+        "last_error": last_error if api_key else "GEMINI_API_KEY not set in environment"
     }
+
