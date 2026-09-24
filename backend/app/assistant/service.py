@@ -65,7 +65,8 @@ def query_assistant(prompt: str, session: Optional[Session] = None) -> Dict[str,
     db_context = assemble_context(session) if session else ""
     
     if api_key:
-        candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+        # Verified working models on Google Generative Language API
+        candidate_models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]
         last_error = None
 
         full_prompt = f"""Context from SentinelX Platform:
@@ -103,7 +104,7 @@ User Query:
 
         # Method 2: Direct Google Generative Language REST API with httpx (no SDK dependency)
         import httpx
-        for model_name in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]:
+        for model_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
                 payload = {
@@ -118,6 +119,7 @@ User Query:
                         "maxOutputTokens": 2048
                     }
                 }
+
                 res = httpx.post(url, json=payload, timeout=20.0)
                 if res.status_code == 200:
                     resp_json = res.json()
