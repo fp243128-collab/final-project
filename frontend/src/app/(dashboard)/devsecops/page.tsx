@@ -101,17 +101,43 @@ export default function DevSecOpsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-foreground">DevSecOps Center</h1>
-        <button 
-          onClick={triggerWebhook}
-          disabled={triggering}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-primary text-white rounded hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          <Play className="w-4 h-4" /> 
-          {triggering ? "Triggering..." : "Simulate Push Webhook"}
-        </button>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">DevSecOps Center</h1>
+          <p className="text-xs text-muted mt-1">Real-time Git push CI/CD monitoring, SAST security audit & automated gates</p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Live Webhook Listener Active</span>
+          </div>
+          <button 
+            onClick={triggerWebhook}
+            disabled={triggering}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
+          >
+            <Play className="w-3.5 h-3.5" /> 
+            {triggering ? "Scanning Code..." : "Test Push Webhook"}
+          </button>
+        </div>
       </div>
+
+      {/* GitHub Webhook Info Banner */}
+      <div className="p-4 rounded-lg bg-surface border border-border flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+        <div className="space-y-1">
+          <div className="font-semibold text-foreground flex items-center gap-1.5">
+            <GitBranch className="w-4 h-4 text-primary" />
+            <span>Connect Live GitHub Repository Webhook</span>
+          </div>
+          <p className="text-muted">
+            Receive instant security audit scans whenever you or team members push commits to GitHub:
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-md font-mono text-[11px] text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700">
+          <span>{API_URL}/api/devsecops/webhook</span>
+        </div>
+      </div>
+
 
       {latestRun && (
         <div className="bg-surface border-sentinel rounded-lg shadow-sm p-6 mb-8">
