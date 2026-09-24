@@ -49,7 +49,12 @@ def run_real_sast_scan() -> Dict[str, Any]:
     except Exception as e:
         return {"status": "PASSED", "error": str(e), "engine": "Bandit Fallback"}
 
-def trigger_pipeline_scan(developer: str = "security-agent@sentinelx.ai", branch: str = "main") -> Dict[str, Any]:
+def trigger_pipeline_scan(
+    developer: str = "security-agent@sentinelx.ai", 
+    branch: str = "main",
+    commit_sha: str = None,
+    commit_msg: str = None
+) -> Dict[str, Any]:
     """
     Executes a DevSecOps CI/CD security gate run:
     1. SAST (Bandit on Python source)
@@ -73,18 +78,22 @@ def trigger_pipeline_scan(developer: str = "security-agent@sentinelx.ai", branch
     elif sast_status == "WARNING" or dependency_status == "WARNING":
         overall_status = "PASSED WITH WARNINGS"
 
+    resolved_commit = commit_sha if commit_sha else str(uuid.uuid4())[:7]
+    display_dev = f"{developer} ({commit_msg[:24]}...)" if commit_msg else developer
+
     new_run = PipelineRun(
         id=f"RUN-{str(uuid.uuid4())[:8].upper()}",
         time=datetime.now(timezone.utc),
-        commit_sha=str(uuid.uuid4())[:7],
+        commit_sha=resolved_commit,
         branch=branch,
-        developer=developer,
+        developer=display_dev,
         status=overall_status,
         sast_status=sast_status,
         secret_status=secret_status,
         dependency_status=dependency_status,
         container_status=container_status
     )
+
     
     with Session(engine) as session:
         session.add(new_run)

@@ -620,9 +620,54 @@ async def get_pipeline_runs(session: Session = Depends(get_session)):
         ]
     }
 
+from fastapi import Request
 from app.devsecops.service import trigger_pipeline_scan
 
 @app.post("/api/devsecops/webhook")
-async def trigger_pipeline_webhook():
-    result = trigger_pipeline_scan(developer="devsecops-ci@sentinelx.ai", branch="main")
-    return {"status": "success", "run": result["run"], "sast_details": result["sast_details"]}
+async def trigger_pipeline_webhook(request: Request):
+    developer = "security-ci@sentinelx.ai"
+    branch = "main"
+    commit_sha = None
+    commit_msg = None
+
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            # GitHub Push Webhook Payload format
+            if "pusher" in body:
+                developer = body.get("pusher", {}).get("email") or body.get("pusher", {}).get("name") or developer
+            elif "sender" in body:
+                developer = body.get("sender", {}).get("login") or developer
+                
+            if "ref" in body:
+                branch = body.get("ref", "").replace("refs/heads/", "") or branch
+                
+            if "head_commit" in body and body["head_commit"]:
+                commit_sha = body["head_commit"].get("id", "")[:7]
+                commit_msg = body["head_commit"].get("message", "")
+            elif "commits" in body and len(body["commits"]) > 0:
+                commit_sha = body["commits"][-1].get("id", "")[:7]
+                commit_msg = body["commits"][-1].get("message", "")
+    except Exception:
+        # Fallback for empty trigger button
+        pass
+
+    result = trigger_pipeline_scan(
+        developer=developer, 
+        branch=branch,
+        commit_sha=commit_sha,
+        commit_msg=commit_msg
+    )
+
+    # Broadcast real-time CI/CD scan alert to connected dashboards
+    await ws_manager.broadcast({
+        "type": "NEW_PIPELINE_RUN",
+        "run": result["run"]
+    })
+
+    return {
+        "status": "success", 
+        "run": result["run"], 
+        "sast_details": result["sast_details"]
+    }
+

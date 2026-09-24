@@ -39,7 +39,26 @@ export default function DevSecOpsPage() {
 
   useEffect(() => {
     fetchRuns();
+
+    // Listen to real-time CI/CD pipeline scans via WebSocket
+    try {
+      const ws = new WebSocket(WS_URL);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "NEW_PIPELINE_RUN") {
+            setRuns((prev) => [data.run, ...prev]);
+          }
+        } catch (e) {
+          // Ignore
+        }
+      };
+      return () => ws.close();
+    } catch (e) {
+      // Ignore
+    }
   }, []);
+
 
   const triggerWebhook = () => {
     setTriggering(true);
