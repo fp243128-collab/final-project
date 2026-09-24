@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { AlertTriangle, Server, Shield, Lock, Cloud } from "lucide-react";
 
@@ -18,7 +20,7 @@ export default function RiskPage() {
   const [data, setData] = useState<RiskData | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/risk")
+    fetch(`${API_URL}/api/risk`)
       .then((res) => res.json())
       .then((json) => setData(json))
       .catch(console.error);

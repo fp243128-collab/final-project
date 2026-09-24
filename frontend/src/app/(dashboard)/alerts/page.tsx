@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState, useRef } from "react";
 import { Bell, CheckCircle, Clock, Radio, ShieldAlert } from "lucide-react";
 
@@ -21,7 +23,7 @@ export default function AlertsPage() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const fetchAlerts = () => {
-    fetch("http://localhost:8000/api/alerts")
+    fetch(`${API_URL}/api/alerts`)
       .then((res) => res.json())
       .then((data) => {
         setAlerts(data.alerts);
@@ -36,7 +38,7 @@ export default function AlertsPage() {
     // Setup live WebSocket connection to SentinelX
     const connectWs = () => {
       try {
-        const ws = new WebSocket("ws://localhost:8000/ws/live");
+        const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
 
         ws.onopen = () => {

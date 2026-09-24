@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { BarChart2 } from "lucide-react";
 import {
@@ -40,7 +42,7 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/analytics")
+    fetch(`${API_URL}/api/analytics`)
       .then((res) => res.json())
       .then((json) => setData(json))
       .catch(console.error);

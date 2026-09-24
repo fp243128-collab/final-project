@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { FileText, Download, Plus } from "lucide-react";
 
@@ -14,7 +16,7 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/reports")
+    fetch(`${API_URL}/api/reports`)
       .then(res => res.json())
       .then(data => setReports(data.reports))
       .catch(console.error);

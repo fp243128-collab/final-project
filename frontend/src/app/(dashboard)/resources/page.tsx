@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { Server, CheckCircle, Cloud, AlertCircle } from "lucide-react";
 
@@ -15,7 +17,7 @@ export default function ResourcesPage() {
   const [resources, setResources] = useState<Resource[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/resources")
+    fetch(`${API_URL}/api/resources`)
       .then(res => res.json())
       .then(data => setResources(data.resources))
       .catch(console.error);

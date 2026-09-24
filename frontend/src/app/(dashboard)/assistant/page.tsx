@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useState, useRef, useEffect } from "react";
 import { Bot, User, Send, Loader2, Sparkles, Shield, Terminal, Copy, Check } from "lucide-react";
 
@@ -47,7 +49,7 @@ export default function AssistantPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/assistant/query", {
+      const response = await fetch(`${API_URL}/api/assistant/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: promptText }),

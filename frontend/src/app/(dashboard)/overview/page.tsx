@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { Shield, AlertTriangle, Activity, Cloud } from "lucide-react";
 import {
@@ -42,7 +44,7 @@ export default function OverviewPage() {
   const [data, setData] = useState<OverviewData | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/overview")
+    fetch(`${API_URL}/api/overview`)
       .then((res) => res.json())
       .then((json) => setData(json))
       .catch(console.error);

@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { Settings, Cloud, Key, CheckCircle, XCircle } from "lucide-react";
 
@@ -13,7 +15,7 @@ export default function SettingsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/settings")
+    fetch(`${API_URL}/api/settings`)
       .then(res => res.json())
       .then(data => setIntegrations(data.integrations))
       .catch(console.error);

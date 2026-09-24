@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { Activity, Cpu, HardDrive, Network, Server, Zap } from "lucide-react";
 import {
@@ -35,7 +37,7 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     const fetchData = () => {
-      fetch("http://localhost:8000/api/monitoring/metrics")
+      fetch(`${API_URL}/api/monitoring/metrics`)
         .then((res) => res.json())
         .then((data) => {
           // Format time for chart display
@@ -47,7 +49,7 @@ export default function MonitoringPage() {
         })
         .catch(console.error);
 
-      fetch("http://localhost:8000/api/monitoring/health")
+      fetch(`${API_URL}/api/monitoring/health`)
         .then((res) => res.json())
         .then((data) => setHealth(data))
         .catch(console.error);

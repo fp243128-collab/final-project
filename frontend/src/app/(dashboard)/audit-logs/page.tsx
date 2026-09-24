@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { History, Search, Download } from "lucide-react";
 
@@ -15,7 +17,7 @@ export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/audit-logs")
+    fetch(`${API_URL}/api/audit-logs`)
       .then(res => res.json())
       .then(data => setLogs(data.logs))
       .catch(console.error);

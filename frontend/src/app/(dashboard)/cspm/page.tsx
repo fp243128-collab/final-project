@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
@@ -33,7 +35,7 @@ export default function CSPMPage() {
   const [lastAction, setLastAction] = useState<string | null>(null);
 
   const fetchCSPM = () => {
-    fetch("http://localhost:8000/api/cspm")
+    fetch(`${API_URL}/api/cspm`)
       .then((res) => res.json())
       .then((json) => {
         setData(json);
@@ -52,7 +54,7 @@ export default function CSPMPage() {
   const handleScan = () => {
     setScanning(true);
     setLastAction(null);
-    fetch("http://localhost:8000/api/cspm/scan", { method: "POST" })
+    fetch(`${API_URL}/api/cspm/scan`, { method: "POST" })
       .then(() => {
         fetchCSPM();
         setScanning(false);
@@ -66,7 +68,7 @@ export default function CSPMPage() {
 
   const handleRemediate = (findingId: string) => {
     setRemediatingId(findingId);
-    fetch("http://localhost:8000/api/cspm/remediate", {
+    fetch(`${API_URL}/api/cspm/remediate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ finding_id: findingId }),

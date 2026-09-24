@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
 import { Play, GitBranch, GitCommit, User, GitMerge } from "lucide-react";
@@ -23,7 +25,7 @@ export default function DevSecOpsPage() {
   const [triggering, setTriggering] = useState(false);
 
   const fetchRuns = () => {
-    fetch("http://localhost:8000/api/devsecops/runs")
+    fetch(`${API_URL}/api/devsecops/runs`)
       .then((res) => res.json())
       .then((json) => {
         setRuns(json.runs || []);
@@ -41,7 +43,7 @@ export default function DevSecOpsPage() {
 
   const triggerWebhook = () => {
     setTriggering(true);
-    fetch("http://localhost:8000/api/devsecops/webhook", { method: "POST" })
+    fetch(`${API_URL}/api/devsecops/webhook`, { method: "POST" })
       .then(() => {
         fetchRuns();
         setTriggering(false);

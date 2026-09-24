@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL, WS_URL } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
@@ -65,7 +67,7 @@ export default function ThreatDetectionPage() {
   const [simFeedback, setSimFeedback] = useState<string | null>(null);
 
   const fetchThreats = () => {
-    fetch("http://localhost:8000/api/threats")
+    fetch(`${API_URL}/api/threats`)
       .then((res) => res.json())
       .then((data) => {
         setThreats(data);
@@ -78,7 +80,7 @@ export default function ThreatDetectionPage() {
   };
 
   const fetchModelDetails = () => {
-    fetch("http://localhost:8000/api/threats/model")
+    fetch(`${API_URL}/api/threats/model`)
       .then((res) => res.json())
       .then((data) => setModelDetails(data))
       .catch(console.error);
@@ -92,7 +94,7 @@ export default function ThreatDetectionPage() {
   const handleSimulateAttack = () => {
     setSimulating(true);
     setSimFeedback(null);
-    fetch("http://localhost:8000/api/threats/simulate", { method: "POST" })
+    fetch(`${API_URL}/api/threats/simulate`, { method: "POST" })
       .then((res) => res.json())
       .then((res) => {
         setSimulating(false);
