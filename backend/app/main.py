@@ -119,6 +119,15 @@ async def login(req: LoginRequest, session: Session = Depends(get_session)):
         }
     }
 
+@app.get("/api/auth/users")
+async def get_all_users(session: Session = Depends(get_session)):
+    users = session.exec(select(User)).all()
+    return {
+        "total": len(users),
+        "users": [{"id": u.id, "email": u.email, "name": u.name, "created_at": str(u.created_at)} for u in users]
+    }
+
+
 
 @app.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket):
