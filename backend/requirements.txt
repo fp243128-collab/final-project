@@ -2,6 +2,7 @@ fastapi>=0.110.0
 uvicorn>=0.28.0
 sqlmodel>=0.0.14
 SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.9
 pydantic>=2.6.0
 pydantic-core>=2.16.0
 python-dateutil>=2.8.2
