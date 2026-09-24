@@ -433,11 +433,12 @@ def seed_alerts(session: Session):
 
 @app.on_event("startup")
 def on_startup():
+    init_db()
     with Session(engine) as session:
         seed_alerts(session)
-    # Keep the existing init_db if any, and call seed_initial_runs
     seed_initial_runs()
     seed_historical_metrics()
+
 
 @app.get("/api/monitoring/metrics")
 async def get_metrics(session: Session = Depends(get_session)):

@@ -16,7 +16,10 @@ else:
     engine = create_engine(sqlite_url, echo=False, connect_args=connect_args)
 
 def init_db():
+    # Explicitly import all models so SQLModel registers table schemas
+    import app.models.core  # noqa: F401
     SQLModel.metadata.create_all(engine)
+
 
 def get_session():
     with Session(engine) as session:
