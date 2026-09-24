@@ -1,9 +1,33 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
 from app.database import get_session, init_db
 from app.models.core import SystemStats, ThreatEvent
 import contextlib
+import json
+import asyncio
+from typing import List
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in list(self.active_connections):
+            try:
+                await connection.send_text(json.dumps(message))
+            except Exception:
+                self.disconnect(connection)
+
+ws_manager = ConnectionManager()
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,6 +45,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.websocket("/ws/live")
+async def websocket_live_endpoint(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        # Initial greeting and ping loop
+        await websocket.send_text(json.dumps({
+            "type": "CONNECTION_ESTABLISHED",
+            "message": "Connected to SentinelX real-time security stream"
+        }))
+        while True:
+            data = await websocket.receive_text()
+            # Echo or heartbeat
+            await websocket.send_text(json.dumps({"type": "PONG", "payload": data}))
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception:
+        ws_manager.disconnect(websocket)
 
 @app.get("/api/overview")
 async def get_overview(session: Session = Depends(get_session)):
@@ -135,6 +177,17 @@ async def analyze_threat(event: NetworkEvent, session: Session = Depends(get_ses
             session.add(stats)
             
         session.commit()
+        await ws_manager.broadcast({
+            "type": "NEW_THREAT",
+            "threat": {
+                "id": new_event.id,
+                "type": new_event.type,
+                "source": new_event.source,
+                "severity": new_event.severity,
+                "confidence": analysis.get("confidence", 95.0),
+                "time": new_event.time.strftime("%H:%M:%S")
+            }
+        })
     
     return {
         "event": event,
@@ -143,7 +196,7 @@ async def analyze_threat(event: NetworkEvent, session: Session = Depends(get_ses
     }
 
 from app.models.core import CSPMFinding
-from app.cspm.scanner import run_cspm_scan
+from app.cspm.scanner import run_cspm_scan, remediate_finding
 
 @app.get("/api/cspm")
 async def get_cspm_findings(session: Session = Depends(get_session)):
@@ -154,7 +207,7 @@ async def get_cspm_findings(session: Session = Depends(get_session)):
     
     severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for f in findings:
-        if f.severity in severity_counts:
+        if f.status == "Open" and f.severity in severity_counts:
             severity_counts[f.severity] += 1
             
     return {
@@ -177,6 +230,20 @@ async def get_cspm_findings(session: Session = Depends(get_session)):
 async def trigger_cspm_scan():
     run_cspm_scan()
     return {"status": "success", "message": "CSPM Scan completed"}
+
+class RemediationRequest(BaseModel):
+    finding_id: str
+
+@app.post("/api/cspm/remediate")
+async def apply_cspm_remediation(req: RemediationRequest, session: Session = Depends(get_session)):
+    result = remediate_finding(req.finding_id, session)
+    if result.get("status") == "success":
+        await ws_manager.broadcast({
+            "type": "CSPM_REMEDIATED",
+            "finding_id": req.finding_id,
+            "new_score": result.get("new_score")
+        })
+    return result
 
 from app.models.core import PipelineRun, Alert
 from app.devsecops.service import simulate_pipeline_run, seed_initial_runs
@@ -240,9 +307,9 @@ class AssistantQuery(BaseModel):
 from app.assistant.service import query_assistant
 
 @app.post("/api/assistant/query")
-async def ask_assistant(query: AssistantQuery):
-    response = query_assistant(query.prompt)
-    return {"response": response}
+async def ask_assistant(query: AssistantQuery, session: Session = Depends(get_session)):
+    result = query_assistant(query.prompt, session=session)
+    return result
 
 @app.get("/api/resources")
 async def get_resources():
@@ -299,6 +366,10 @@ async def resolve_alert(alert_id: str, session: Session = Depends(get_session)):
         alert.status = "Resolved"
         session.add(alert)
         session.commit()
+        await ws_manager.broadcast({
+            "type": "ALERT_RESOLVED",
+            "alert_id": alert_id
+        })
     return {"status": "success"}
 
 @app.get("/api/risk")
@@ -372,7 +443,9 @@ async def get_pipeline_runs(session: Session = Depends(get_session)):
         ]
     }
 
+from app.devsecops.service import trigger_pipeline_scan
+
 @app.post("/api/devsecops/webhook")
 async def trigger_pipeline_webhook():
-    run = simulate_pipeline_run()
-    return {"status": "success", "run": run}
+    result = trigger_pipeline_scan(developer="devsecops-ci@sentinelx.ai", branch="main")
+    return {"status": "success", "run": result["run"], "sast_details": result["sast_details"]}
