@@ -19,4 +19,3 @@ bandit>=1.7.8
 PyYAML>=6.0.0
 httpx>=0.27.0
 websockets>=12.0
-pytest>=8.0.0
