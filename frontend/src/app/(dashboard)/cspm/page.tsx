@@ -1,11 +1,11 @@
 "use client";
 
-import { API_URL, WS_URL } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
 import { SeverityBadge } from "@/components/ui/SeverityBadge";
-import { RefreshCw, Download, Server, Wrench, CheckCircle2, ShieldCheck, AlertCircle, Terminal } from "lucide-react";
+import { RefreshCw, Server, Wrench, CheckCircle2, ShieldCheck, AlertCircle, Terminal } from "lucide-react";
 
 interface CSPMFindingData {
   id: string;

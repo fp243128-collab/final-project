@@ -2,24 +2,34 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Bell, Search, User, LogOut } from "lucide-react";
+
+function subscribeUser(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function getStoredUserName() {
+  try {
+    const stored = localStorage.getItem("sentinelx_user");
+    if (stored) {
+      const u = JSON.parse(stored);
+      if (u.name) return u.name as string;
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return "SecOps Analyst";
+}
+
+function getServerUserName() {
+  return "SecOps Analyst";
+}
 
 export function Topbar() {
   const router = useRouter();
-  const [userName, setUserName] = useState<string>("SecOps Analyst");
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("sentinelx_user");
-      if (stored) {
-        const u = JSON.parse(stored);
-        if (u.name) setUserName(u.name);
-      }
-    } catch (e) {
-      // Ignore
-    }
-  }, []);
+  const userName = useSyncExternalStore(subscribeUser, getStoredUserName, getServerUserName);
 
   const handleLogout = () => {
     localStorage.removeItem("sentinelx_token");

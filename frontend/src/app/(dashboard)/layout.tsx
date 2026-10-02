@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { Loader2 } from "lucide-react";
+
+function subscribe(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function getClientToken() {
+  return localStorage.getItem("sentinelx_token");
+}
+
+function getServerToken() {
+  return null;
+}
 
 export default function DashboardLayout({
   children,
@@ -11,18 +24,15 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const token = useSyncExternalStore(subscribe, getClientToken, getServerToken);
 
   useEffect(() => {
-    const token = localStorage.getItem("sentinelx_token");
-    if (!token) {
+    if (token === null || token === "") {
       router.replace("/login");
-    } else {
-      setIsAuthenticated(true);
     }
-  }, [router]);
+  }, [token, router]);
 
-  if (isAuthenticated === null) {
+  if (!token) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-background text-foreground gap-3">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />

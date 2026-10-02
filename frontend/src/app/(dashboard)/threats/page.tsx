@@ -1,6 +1,6 @@
 "use client";
 
-import { API_URL, WS_URL } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 
 import { useEffect, useState } from "react";
 import { DataTable } from "@/components/ui/DataTable";
@@ -8,13 +8,10 @@ import { SeverityBadge } from "@/components/ui/SeverityBadge";
 import { 
   ShieldAlert, 
   Activity, 
-  Filter, 
-  Download, 
   Zap, 
   Cpu, 
   BarChart3, 
   Info, 
-  CheckCircle2, 
   ChevronDown, 
   ChevronUp,
   BrainCircuit,

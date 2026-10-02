@@ -1,6 +1,6 @@
 "use client";
 
-import { API_URL, WS_URL } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 
 import { useState, useRef, useEffect } from "react";
 import { Bot, User, Send, Loader2, Sparkles, Shield, Terminal, Copy, Check } from "lucide-react";
@@ -26,6 +26,8 @@ export default function AssistantPage() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const messageIdRef = useRef(1);
+
   const [keyStatus, setKeyStatus] = useState<{ configured: boolean; prefix?: string } | null>(null);
 
   useEffect(() => {
@@ -44,7 +46,6 @@ export default function AssistantPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -58,7 +59,8 @@ export default function AssistantPage() {
   const sendPrompt = async (promptText: string) => {
     if (!promptText.trim() || isLoading) return;
 
-    const userMsg: Message = { id: Date.now().toString(), role: "user", content: promptText };
+    messageIdRef.current += 1;
+    const userMsg: Message = { id: `msg-${messageIdRef.current}`, role: "user", content: promptText };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
@@ -71,16 +73,18 @@ export default function AssistantPage() {
       });
       const data = await response.json();
       
+      messageIdRef.current += 1;
       setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
+        id: `msg-${messageIdRef.current}`,
         role: "assistant",
         content: data.response || "No response received.",
         engine: data.engine
       }]);
     } catch (error) {
       console.error(error);
+      messageIdRef.current += 1;
       setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
+        id: `msg-${messageIdRef.current}`,
         role: "assistant",
         content: "⚠️ Failed to communicate with SentinelX AI assistant API backend."
       }]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { API_URL, WS_URL } from "@/lib/api";
+import { API_URL } from "@/lib/api";
 
 import { useEffect, useState } from "react";
 import { History, Search, Download } from "lucide-react";

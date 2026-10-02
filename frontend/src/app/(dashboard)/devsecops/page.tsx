@@ -49,12 +49,12 @@ export default function DevSecOpsPage() {
           if (data.type === "NEW_PIPELINE_RUN") {
             setRuns((prev) => [data.run, ...prev]);
           }
-        } catch (e) {
+        } catch {
           // Ignore
         }
       };
       return () => ws.close();
-    } catch (e) {
+    } catch {
       // Ignore
     }
   }, []);

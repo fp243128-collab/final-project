@@ -37,8 +37,9 @@ export default function LoginPage() {
       }
 
       router.push("/overview");
-    } catch (err: any) {
-      setErrorMessage(err.message || "Failed to sign in. Please verify your credentials.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to sign in. Please verify your credentials.";
+      setErrorMessage(message);
     } finally {
       setIsLoading(false);
     }
