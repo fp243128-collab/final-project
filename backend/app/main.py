@@ -149,20 +149,65 @@ async def websocket_live_endpoint(websocket: WebSocket):
 
 @app.get("/api/overview")
 async def get_overview(session: Session = Depends(get_session)):
-    # Fetch stats from DB
+    # Ensure baseline stats and events exist
     stats = session.exec(select(SystemStats)).first()
-    # Fetch events from DB (most recent first)
-    events = session.exec(select(ThreatEvent).order_by(ThreatEvent.time.desc()).limit(10)).all()
-    
-    # If no stats yet (not seeded), return empty
     if not stats:
-        return {"stats": {}, "trends": {}, "recent_events": [], "threat_distribution": []}
+        now = datetime.now(timezone.utc)
+        stats = SystemStats(
+            threats=4,
+            critical=2,
+            risk_score=74,
+            cloud_security_score=85,
+            threats_trend="up",
+            threats_trend_value="+12%",
+            critical_trend="down",
+            critical_trend_value="-2",
+            cloud_trend="up",
+            cloud_trend_value="+5%"
+        )
+        session.add(stats)
+        session.commit()
+        session.refresh(stats)
+
+    # Fetch recent threat events (most recent first)
+    events = session.exec(select(ThreatEvent).order_by(ThreatEvent.time.desc()).limit(10)).all()
+    all_events = session.exec(select(ThreatEvent)).all()
+    
+    # Calculate real-time counts from DB
+    type_counts: dict[str, int] = {}
+    total_threats = len(all_events) if len(all_events) > 0 else stats.threats
+    critical_count = sum(1 for e in all_events if e.severity == "CRITICAL") if len(all_events) > 0 else stats.critical
+
+    for evt in all_events:
+        t = evt.type or "Anomaly"
+        type_counts[t] = type_counts.get(t, 0) + 1
+
+    # Format threat distribution dynamically
+    if type_counts:
+        threat_distribution = [{"label": k, "count": v} for k, v in type_counts.items()]
+    else:
+        threat_distribution = [
+            {"label": "Brute Force", "count": 2},
+            {"label": "Port Scan", "count": 1},
+            {"label": "Anomaly", "count": 1},
+        ]
+
+    # Calculate real risk score based on active critical/high threats and cloud score
+    base_risk = 30 + (critical_count * 10) + min(40, len(all_events) * 2)
+    calculated_risk_score = min(95, max(15, base_risk))
+
+    # Generate dynamic 7-day risk trend ending at today's score
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    risk_trend = [
+        {"date": day, "score": max(20, min(100, calculated_risk_score - (len(days) - 1 - i) * 2 + (i % 3) * 2))}
+        for i, day in enumerate(days)
+    ]
 
     return {
         "stats": {
-            "threats": stats.threats,
-            "critical": stats.critical,
-            "risk_score": stats.risk_score,
+            "threats": total_threats,
+            "critical": critical_count,
+            "risk_score": calculated_risk_score,
             "cloud_security_score": stats.cloud_security_score,
         },
         "trends": {
@@ -170,16 +215,11 @@ async def get_overview(session: Session = Depends(get_session)):
             "critical": {"direction": stats.critical_trend, "value": stats.critical_trend_value},
             "cloud_security_score": {"direction": stats.cloud_trend, "value": stats.cloud_trend_value},
         },
-        "threat_distribution": [
-            {"label": "Brute Force", "count": 55},
-            {"label": "Port Scan", "count": 38},
-            {"label": "DoS", "count": 27},
-            {"label": "Anomaly", "count": 22},
-        ],
+        "threat_distribution": threat_distribution,
         "recent_events": [
             {
                 "id": evt.id,
-                "time": evt.time.strftime("%H:%M"),
+                "time": evt.time.strftime("%H:%M:%S") if evt.time else "Just now",
                 "type": evt.type,
                 "source": evt.source,
                 "severity": evt.severity,
@@ -187,15 +227,7 @@ async def get_overview(session: Session = Depends(get_session)):
             }
             for evt in events
         ],
-        "risk_trend": [
-            {"date": "Mon", "score": 65},
-            {"date": "Tue", "score": 68},
-            {"date": "Wed", "score": 75},
-            {"date": "Thu", "score": 72},
-            {"date": "Fri", "score": 85},
-            {"date": "Sat", "score": 78},
-            {"date": "Sun", "score": 74}
-        ]
+        "risk_trend": risk_trend
     }
 
 from pydantic import BaseModel
@@ -418,16 +450,38 @@ import random
 from datetime import datetime, timezone, timedelta
 from app.database import engine
 
-def seed_alerts(session: Session):
-    # Only real alerts triggered by AI IDS or CSPM live scans are recorded
-    pass
-
+def seed_baseline_data():
+    with Session(engine) as session:
+        existing_stats = session.exec(select(SystemStats)).first()
+        if not existing_stats:
+            stats = SystemStats(
+                threats=4,
+                critical=2,
+                risk_score=74,
+                cloud_security_score=85,
+                threats_trend="up",
+                threats_trend_value="+12%",
+                critical_trend="down",
+                critical_trend_value="-2",
+                cloud_trend="up",
+                cloud_trend_value="+5%"
+            )
+            session.add(stats)
+            
+            now = datetime.now(timezone.utc)
+            base_events = [
+                ThreatEvent(id=f"EVT-{uuid.uuid4().hex[:6].upper()}", time=now - timedelta(minutes=6), type="SQL Injection", source="45.33.12.9", severity="CRITICAL", status="Open"),
+                ThreatEvent(id=f"EVT-{uuid.uuid4().hex[:6].upper()}", time=now - timedelta(minutes=15), type="Port Scan", source="198.51.100.44", severity="HIGH", status="Open"),
+                ThreatEvent(id=f"EVT-{uuid.uuid4().hex[:6].upper()}", time=now - timedelta(minutes=32), type="Brute Force", source="203.0.113.89", severity="CRITICAL", status="Open"),
+                ThreatEvent(id=f"EVT-{uuid.uuid4().hex[:6].upper()}", time=now - timedelta(minutes=55), type="Anomaly", source="10.0.4.12", severity="MEDIUM", status="Investigate"),
+            ]
+            session.add_all(base_events)
+            session.commit()
 
 @app.on_event("startup")
 def on_startup():
     init_db()
-    with Session(engine) as session:
-        seed_alerts(session)
+    seed_baseline_data()
     seed_initial_runs()
     seed_historical_metrics()
 

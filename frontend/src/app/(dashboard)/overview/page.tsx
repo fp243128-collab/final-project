@@ -1,9 +1,9 @@
 "use client";
 
-import { API_URL } from "@/lib/api";
+import { API_URL, WS_URL } from "@/lib/api";
 
-import { useEffect, useState } from "react";
-import { Shield, AlertTriangle, Activity, Cloud } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { Shield, AlertTriangle, Activity, Cloud, RefreshCw, Zap, Radio, Loader2 } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -42,16 +42,111 @@ interface OverviewData {
 
 export default function OverviewPage() {
   const [data, setData] = useState<OverviewData | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [simulating, setSimulating] = useState(false);
+  const [simAlert, setSimAlert] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/overview`)
-      .then((res) => res.json())
-      .then((json) => setData(json))
-      .catch(console.error);
+  const fetchOverview = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/overview`);
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+      }
+    } catch (err) {
+      console.error("Failed to load overview data:", err);
+    }
   }, []);
 
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchOverview();
+    setIsRefreshing(false);
+  };
+
+  const handleSimulateAttack = async () => {
+    setSimulating(true);
+    setSimAlert(null);
+    try {
+      const res = await fetch(`${API_URL}/api/threats/simulate`, { method: "POST" });
+      const result = await res.json();
+      if (result.status === "success") {
+        setSimAlert(`🚨 Injected Traffic Vector: ${result.scenario} -> ${result.analysis.prediction} (${result.analysis.severity})`);
+        await fetchOverview();
+      }
+    } catch (e) {
+      console.error("Simulation error:", e);
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    fetch(`${API_URL}/api/overview`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (!isCancelled) setData(json);
+      })
+      .catch((err) => console.error("Failed to load overview data:", err));
+
+    // Setup live WebSocket stream
+    const connectWs = () => {
+      try {
+        const ws = new WebSocket(WS_URL);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setWsConnected(true);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "NEW_THREAT" || msg.type === "CSPM_REMEDIATED" || msg.type === "NEW_PIPELINE_RUN") {
+              fetchOverview();
+            }
+          } catch {
+            // Ignore malformed WS packets
+          }
+        };
+
+        ws.onclose = () => {
+          setWsConnected(false);
+        };
+
+        ws.onerror = () => {
+          setWsConnected(false);
+        };
+      } catch {
+        setWsConnected(false);
+      }
+    };
+
+    connectWs();
+
+    // Fallback periodic polling every 10 seconds to keep charts and telemetry in sync
+    const interval = setInterval(fetchOverview, 10000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [fetchOverview]);
+
   if (!data || !data.stats) {
-    return <div className="p-8 text-center text-muted">Loading overview data...</div>;
+    return (
+      <div className="p-12 text-center text-muted flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="font-medium text-sm">Aggregating real-time security posture & telemetry...</p>
+      </div>
+    );
   }
 
   const getRiskColor = (score: number) => {
@@ -63,10 +158,58 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 mb-6">
-        <Activity className="w-7 h-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Security Overview</h1>
+      {/* Top Header & Real-time Controls */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-2">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary/10 rounded-lg border border-primary/20 text-primary">
+            <Activity className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-bold text-foreground">Security Overview</h1>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                wsConnected 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
+                <Radio className={`w-3 h-3 ${wsConnected ? 'animate-pulse text-emerald-500' : 'text-amber-500'}`} />
+                {wsConnected ? 'Live Stream Active' : 'Polling (10s)'}
+              </span>
+            </div>
+            <p className="text-xs text-muted">
+              Live threat telemetry, cloud posture analytics, and risk assessments
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSimulateAttack}
+            disabled={simulating}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-md transition-all shadow-xs disabled:opacity-50"
+            title="Inject simulated traffic vector to test real-time IDS ML classification"
+          >
+            {simulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            <span>{simulating ? "Injecting..." : "Simulate Attack Traffic"}</span>
+          </button>
+
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border bg-surface hover:bg-gray-50 text-foreground rounded-md transition-all shadow-xs disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-primary' : 'text-muted'}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
+
+      {simAlert && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-xs font-medium rounded-lg flex items-center justify-between animate-fadeIn">
+          <span>{simAlert}</span>
+          <button onClick={() => setSimAlert(null)} className="text-red-500 hover:text-red-700 font-bold ml-2">✕</button>
+        </div>
+      )}
 
       {/* Top Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
