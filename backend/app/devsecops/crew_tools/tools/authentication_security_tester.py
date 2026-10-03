@@ -352,9 +352,12 @@ class AuthenticationSecurityTesterTool(BaseTool):
         sections.append("\n## Login Interface & Form Security Catalog\n")
         sections.append("| Component Property | Detected Setting | Security Evaluation | Recommended Hardening |")
         sections.append("|---|---|---|---|")
-        sections.append(f"| Form Target Action | `{form_info['form_action']}` | {'Secure Same-Origin' if form_info['is_action_https'] else 'External / Insecure'} | Ensure form submissions route strictly to HTTPS endpoints. |")
-        sections.append(f"| Password Input Masking | {'type=\"password\"' if form_info['has_password'] else 'No Password Field'} | Standard Form Field | Client masks credential input characters on display. |")
-        sections.append(f"| Autocomplete Setting | {'autocomplete set' if form_info['has_autocomplete'] else 'Unset / Default'} | {'Managed' if form_info['has_autocomplete'] else 'Low Risk'} | Set `autocomplete=\"current-password\"` to assist password managers. |")
+        pwd_masking = 'type="password"' if form_info['has_password'] else 'No Password Field'
+        form_action_eval = 'Secure Same-Origin' if form_info['is_action_https'] else 'External / Insecure'
+        autocomplete_eval = 'Managed' if form_info['has_autocomplete'] else 'Low Risk'
+        sections.append(f"| Form Target Action | `{form_info['form_action']}` | {form_action_eval} | Ensure form submissions route strictly to HTTPS endpoints. |")
+        sections.append(f"| Password Input Masking | {pwd_masking} | Standard Form Field | Client masks credential input characters on display. |")
+        sections.append(f"| Autocomplete Setting | {'autocomplete set' if form_info['has_autocomplete'] else 'Unset / Default'} | {autocomplete_eval} | Set `autocomplete=\"current-password\"` to assist password managers. |")
         sections.append(f"| Cross-Origin Isolation | {'Same-Origin Action' if form_info['is_action_https'] else 'Cross-Domain'} | Enforced | Validate Origin and Referer headers on authentication handler. |")
 
         # 3. Credential Stuffing & Default Accounts
