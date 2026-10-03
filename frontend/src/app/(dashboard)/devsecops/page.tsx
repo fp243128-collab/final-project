@@ -218,6 +218,8 @@ export default function DevSecOpsPage() {
                   ? "bg-amber-500 animate-ping"
                   : audit?.status === "complete"
                   ? "bg-emerald-500"
+                  : audit?.status === "failed"
+                  ? "bg-red-500"
                   : "bg-muted"
               }`}
             />
@@ -232,6 +234,32 @@ export default function DevSecOpsPage() {
           </div>
         </div>
       </div>
+
+      {/* Error Banner if Audit Failed or Errored */}
+      {audit?.error && (
+        <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 text-red-500" />
+            <div className="text-sm">
+              <span className="font-semibold">Assessment Notice:</span> {audit.error}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await fetch(`${API_URL}/api/devsecops/audit/stop`, { method: "POST" });
+                fetchStatus();
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold whitespace-nowrap transition-colors"
+          >
+            Reset Scanner
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: Control Form & Configuration */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
