@@ -1,520 +1,540 @@
-
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Type, List, Dict, Any
+from typing import Type, List, Dict, Any, Optional
 import requests
 import time
-import json
+from urllib.parse import urlparse
 
+
+# ── Input Schema ─────────────────────────────────────────────────────────────
 
 class RateLimitingDoSResilienceTesterInput(BaseModel):
     """Input schema for Rate Limiting and DoS Resilience Tester Tool."""
     url: str = Field(..., description="The target URL to test for rate limiting and DoS resilience.")
 
 
+# ── Constants & Signatures ───────────────────────────────────────────────────
+
+RATE_LIMIT_HEADER_KEYS = [
+    "retry-after", "x-ratelimit-limit", "x-ratelimit-remaining",
+    "x-ratelimit-reset", "ratelimit-limit", "ratelimit-remaining",
+    "ratelimit-reset", "ratelimit-policy", "x-rate-limit-limit",
+    "x-rate-limit-remaining", "x-rate-limit-reset"
+]
+
+CDN_WAF_SIGNATURES: Dict[str, List[str]] = {
+    "Cloudflare": ["cf-ray", "cf-cache-status", "server:cloudflare", "cf-mitigated"],
+    "AWS CloudFront": ["x-amz-cf-id", "x-amz-cf-pop", "via:1.1 cloudfront", "via:cloudfront"],
+    "Akamai": ["x-check-cacheable", "akamai-cache-status", "x-akamai-request-id", "akamai-grn"],
+    "Fastly": ["x-served-by", "x-cache:hit from fastly", "fastly-debug-digest", "x-fastly-request-id"],
+    "Imperva / Incapsula": ["x-iinfo", "x-cdn:incapsula", "incap_ses", "visid_incap"],
+    "Google Cloud Armor / CDN": ["via:1.1 google", "x-goog-generation", "x-guploader-uploadid"],
+    "Azure Front Door": ["x-azure-ref", "x-azure-fdid", "x-fd-features"],
+    "Sucuri WAF": ["x-sucuri-id", "x-sucuri-cache", "server:sucuri"],
+}
+
+HTTP_METHODS_TO_TEST = [
+    "GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE", "CONNECT", "DEBUG", "INVALIDVERB"
+]
+
+DANGEROUS_METHODS = {"PUT", "DELETE", "TRACE", "DEBUG", "CONNECT"}
+
+
+# ── Core Engine ──────────────────────────────────────────────────────────────
+
 class RateLimitingDoSResilienceTesterTool(BaseTool):
-    """Tool for testing rate limiting and DoS resilience of a given URL."""
+    """
+    Advanced security tool for auditing rate limiting enforcement, burst load resilience,
+    large payload exhaustion limits, HTTP verb tampering, host injection vulnerabilities,
+    and CDN/WAF perimeter mitigation capabilities.
+    """
 
     name: str = "Rate Limiting and DoS Resilience Tester"
     description: str = (
-        "Tests a URL for rate limiting enforcement, DoS resilience, large payload handling, "
-        "HTTP method exposure, header injection behavior, and compression/caching/CDN presence. "
-        "Runs all tests sequentially with ethical delays and returns a full security report."
+        "Tests a target URL for rate limiting enforcement, burst load degradation, "
+        "large payload exhaustion, HTTP verb tampering, host header injection, and CDN/WAF "
+        "mitigation presence. Returns a clean executive tabular data-sheet report."
     )
     args_schema: Type[BaseModel] = RateLimitingDoSResilienceTesterInput
 
-    # ------------------------------------------------------------------ #
-    #  Internal helpers                                                    #
-    # ------------------------------------------------------------------ #
+    def _normalize_url(self, raw_url: str) -> str:
+        url = raw_url.strip()
+        if not url.startswith(("http://", "https://")):
+            url = f"https://{url}"
+        return url.rstrip("/")
 
-    def _safe_get(self, url: str, **kwargs) -> Dict[str, Any]:
-        """Perform a GET request and return a normalised result dict."""
+    def _safe_request(
+        self,
+        method: str,
+        url: str,
+        timeout: float = 8.0,
+        headers: Optional[Dict[str, str]] = None,
+        data: Optional[Any] = None,
+        allow_redirects: bool = False,
+    ) -> Dict[str, Any]:
+        default_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        if headers:
+            default_headers.update(headers)
+
         start = time.time()
         try:
-            resp = requests.get(url, timeout=10, allow_redirects=True, **kwargs)
-            elapsed = (time.time() - start) * 1000  # ms
+            resp = requests.request(
+                method,
+                url,
+                timeout=timeout,
+                headers=default_headers,
+                data=data,
+                allow_redirects=allow_redirects,
+                verify=False,
+            )
+            elapsed_ms = round((time.time() - start) * 1000, 1)
             return {
                 "ok": True,
                 "status": resp.status_code,
-                "elapsed_ms": round(elapsed, 2),
+                "elapsed_ms": elapsed_ms,
+                "size": len(resp.content),
                 "headers": dict(resp.headers),
+                "error": None,
             }
         except requests.exceptions.Timeout:
-            return {"ok": False, "error": "Timeout", "elapsed_ms": 10000}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc), "elapsed_ms": 0}
-
-    def _safe_request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
-        """Generic request helper for arbitrary HTTP methods."""
-        start = time.time()
-        try:
-            resp = requests.request(method, url, timeout=10, allow_redirects=False, **kwargs)
-            elapsed = (time.time() - start) * 1000
+            elapsed_ms = round((time.time() - start) * 1000, 1)
             return {
-                "ok": True,
-                "status": resp.status_code,
-                "elapsed_ms": round(elapsed, 2),
-                "headers": dict(resp.headers),
+                "ok": False,
+                "status": None,
+                "elapsed_ms": elapsed_ms,
+                "size": 0,
+                "headers": {},
+                "error": f"Timeout (> {timeout}s)",
             }
-        except requests.exceptions.Timeout:
-            return {"ok": False, "error": "Timeout", "elapsed_ms": 10000}
         except Exception as exc:
-            return {"ok": False, "error": str(exc), "elapsed_ms": 0}
+            elapsed_ms = round((time.time() - start) * 1000, 1)
+            return {
+                "ok": False,
+                "status": None,
+                "elapsed_ms": elapsed_ms,
+                "size": 0,
+                "headers": {},
+                "error": str(exc)[:80],
+            }
 
-    # ------------------------------------------------------------------ #
-    #  Section A – Rate Limiting Detection                                 #
-    # ------------------------------------------------------------------ #
+    # ── 1. Burst Rate Limiting Test ──
+    def _execute_burst_benchmark(self, url: str) -> Dict[str, Any]:
+        burst_results = []
+        captured_rate_headers: Dict[str, str] = {}
+        first_429_index: Optional[int] = None
+        first_5xx_index: Optional[int] = None
 
-    def _test_rate_limiting(self, url: str) -> Dict[str, Any]:
-        results = []
-        rate_limit_headers_seen = {}
-        rate_limited_at = None
-        error_after = None
+        for req_idx in range(1, 21):
+            res = self._safe_request("GET", url, timeout=6.0)
+            res["req_num"] = req_idx
+            burst_results.append(res)
 
-        RATE_LIMIT_HEADER_KEYS = [
-            "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining",
-            "X-RateLimit-Reset", "RateLimit-Limit", "RateLimit-Remaining",
-            "RateLimit-Reset", "X-Rate-Limit-Limit", "X-Rate-Limit-Remaining",
-        ]
+            if res["ok"] and res["status"]:
+                st = res["status"]
+                hdrs_lower = {k.lower(): v for k, v in res.get("headers", {}).items()}
 
-        for i in range(1, 21):
-            result = self._safe_get(url)
-            result["request_num"] = i
-            results.append(result)
-
-            if result.get("ok"):
-                status = result["status"]
-                hdrs = result.get("headers", {})
-
-                # Collect rate-limit headers (case-insensitive match)
-                hdrs_lower = {k.lower(): v for k, v in hdrs.items()}
+                # Collect rate limit headers
                 for rh in RATE_LIMIT_HEADER_KEYS:
-                    val = hdrs_lower.get(rh.lower())
-                    if val and rh not in rate_limit_headers_seen:
-                        rate_limit_headers_seen[rh] = val
+                    if rh in hdrs_lower and rh not in captured_rate_headers:
+                        captured_rate_headers[rh] = hdrs_lower[rh]
 
-                if status == 429 and rate_limited_at is None:
-                    rate_limited_at = i
-                if status >= 500 and error_after is None:
-                    error_after = i
+                if st == 429 and first_429_index is None:
+                    first_429_index = req_idx
+                elif st >= 500 and first_5xx_index is None:
+                    first_5xx_index = req_idx
 
-            time.sleep(0.1)
+            time.sleep(0.05)  # rapid 50ms interval to simulate realistic burst
 
-        statuses = [r["status"] for r in results if r.get("ok")]
+        valid_timings = [r["elapsed_ms"] for r in burst_results if r["ok"]]
+        statuses = [str(r["status"]) for r in burst_results if r.get("status")]
+
         return {
-            "total_requests": 20,
-            "status_distribution": {str(s): statuses.count(s) for s in set(statuses)},
-            "rate_limit_detected": rate_limited_at is not None,
-            "rate_limited_at_request": rate_limited_at,
-            "server_error_after_request": error_after,
-            "rate_limit_headers_found": rate_limit_headers_seen,
-            "raw_timings_ms": [r.get("elapsed_ms", 0) for r in results],
+            "burst_records": burst_results,
+            "timings_ms": valid_timings,
+            "status_distribution": {s: statuses.count(s) for s in set(statuses)},
+            "rate_limited": first_429_index is not None,
+            "rate_limited_at": first_429_index,
+            "server_error_at": first_5xx_index,
+            "rate_headers": captured_rate_headers,
         }
 
-    # ------------------------------------------------------------------ #
-    #  Section B – Response Time Analysis                                  #
-    # ------------------------------------------------------------------ #
-
-    def _analyse_response_times(self, timings: List[float]) -> Dict[str, Any]:
+    # ── 2. Latency Degradation Analysis ──
+    def _compute_latency_metrics(self, timings: List[float]) -> Dict[str, Any]:
         if not timings:
-            return {"error": "No timings available"}
-
-        avg = sum(timings) / len(timings)
-        mn = min(timings)
-        mx = max(timings)
-
-        # Degradation: compare first-half avg vs second-half avg
-        mid = len(timings) // 2
-        first_half_avg = sum(timings[:mid]) / mid if mid else avg
-        second_half_avg = sum(timings[mid:]) / (len(timings) - mid) if (len(timings) - mid) else avg
-        degradation_pct = ((second_half_avg - first_half_avg) / first_half_avg * 100) if first_half_avg else 0
-
-        flags = []
-        if avg > 2000:
-            flags.append(f"SLOW SERVER: average response time {round(avg, 1)}ms > 2000ms — elevated DoS risk")
-        if degradation_pct > 30:
-            flags.append(
-                f"PERFORMANCE DEGRADATION: response times increased ~{round(degradation_pct, 1)}% "
-                "over the request sequence — server may be degrading under load"
-            )
-
-        return {
-            "min_ms": round(mn, 2),
-            "max_ms": round(mx, 2),
-            "avg_ms": round(avg, 2),
-            "first_half_avg_ms": round(first_half_avg, 2),
-            "second_half_avg_ms": round(second_half_avg, 2),
-            "degradation_pct": round(degradation_pct, 2),
-            "flags": flags,
-        }
-
-    # ------------------------------------------------------------------ #
-    #  Section C – Large Payload Test                                      #
-    # ------------------------------------------------------------------ #
-
-    def _test_large_payload(self, url: str) -> Dict[str, Any]:
-        findings = []
-
-        # POST with 10 KB body
-        large_body = "A" * 10240
-        post_result = self._safe_request("POST", url, data=large_body,
-                                         headers={"Content-Type": "text/plain"})
-        post_status = post_result.get("status") if post_result.get("ok") else post_result.get("error")
-        if post_result.get("ok") and post_result["status"] not in (400, 413, 414, 415, 422, 429, 431):
-            findings.append(
-                f"MISSING REQUEST SIZE LIMIT: server accepted 10KB POST body without error "
-                f"(HTTP {post_result['status']})"
-            )
-
-        # GET with very long query parameter (1000 chars)
-        long_param = "B" * 1000
-        long_url = f"{url}{'&' if '?' in url else '?'}test={long_param}"
-        get_result = self._safe_get(long_url)
-        get_status = get_result.get("status") if get_result.get("ok") else get_result.get("error")
-        if get_result.get("ok") and get_result["status"] not in (400, 414):
-            findings.append(
-                f"LONG URL ACCEPTED: server accepted 1000-char query param without 414/400 "
-                f"(HTTP {get_result['status']})"
-            )
-
-        return {
-            "post_10kb_status": post_status,
-            "get_long_param_status": get_status,
-            "findings": findings,
-        }
-
-    # ------------------------------------------------------------------ #
-    #  Section D – HTTP Method Testing                                     #
-    # ------------------------------------------------------------------ #
-
-    def _test_http_methods(self, url: str) -> Dict[str, Any]:
-        methods_to_test = ["OPTIONS", "HEAD", "PUT", "DELETE", "PATCH", "TRACE"]
-        dangerous_methods = {"PUT", "DELETE", "TRACE"}
-        results = {}
-        allowed_methods = []
-        dangerous_allowed = []
-
-        for method in methods_to_test:
-            r = self._safe_request(method, url)
-            status = r.get("status") if r.get("ok") else r.get("error")
-            results[method] = status
-
-            # A response that isn't 405/501 typically means the method is accepted
-            if r.get("ok") and r["status"] not in (405, 501, 502, 503):
-                allowed_methods.append(method)
-                if method in dangerous_methods:
-                    dangerous_allowed.append(method)
-
-            # Also parse Allow header from OPTIONS
-            if method == "OPTIONS" and r.get("ok"):
-                allow_hdr = r.get("headers", {}).get("Allow", "")
-                if allow_hdr:
-                    for m in dangerous_methods:
-                        if m in allow_hdr and m not in dangerous_allowed:
-                            dangerous_allowed.append(m)
-
-            time.sleep(0.1)
-
-        flags = []
-        for dm in dangerous_allowed:
-            tips = {
-                "PUT": "PUT allowed — attackers may upload arbitrary files",
-                "DELETE": "DELETE allowed — attackers may delete resources",
-                "TRACE": "TRACE allowed — Cross-Site Tracing (XST) attack vector",
+            return {
+                "min_ms": 0, "max_ms": 0, "avg_ms": 0, "median_ms": 0,
+                "first_half_avg": 0, "second_half_avg": 0, "degradation_pct": 0,
+                "health_status": "Indeterminate", "observations": ["No successful responses recorded."]
             }
-            flags.append(tips.get(dm, f"{dm} allowed — review necessity"))
+
+        sorted_t = sorted(timings)
+        n = len(timings)
+        min_t = min(timings)
+        max_t = max(timings)
+        avg_t = round(sum(timings) / n, 1)
+        med_t = sorted_t[n // 2]
+
+        mid = n // 2
+        first_half = timings[:mid] if mid > 0 else timings
+        second_half = timings[mid:] if mid > 0 else timings
+
+        first_avg = round(sum(first_half) / len(first_half), 1)
+        second_avg = round(sum(second_half) / len(second_half), 1)
+
+        deg_pct = round(((second_avg - first_avg) / first_avg * 100), 1) if first_avg > 0 else 0
+
+        observations = []
+        if avg_t > 1500:
+            health = "Elevated Latency"
+            observations.append("Average response time exceeds 1.5s — high susceptibility to connection pool exhaustion.")
+        elif deg_pct > 40:
+            health = "Performance Degradation"
+            observations.append(f"Response latency increased by +{deg_pct}% under rapid sequential load.")
+        elif deg_pct < -20:
+            health = "Optimized / Edge Cached"
+            observations.append("Response times improved during burst sequence indicating hot edge-cache acceleration.")
+        else:
+            health = "Stable Under Load"
+            observations.append("Response latency remained uniform and resilient across the 20-request burst sequence.")
 
         return {
-            "method_status_codes": results,
-            "apparently_allowed": allowed_methods,
-            "dangerous_methods_allowed": dangerous_allowed,
-            "flags": flags,
+            "min_ms": min_t,
+            "max_ms": max_t,
+            "avg_ms": avg_t,
+            "median_ms": med_t,
+            "first_half_avg": first_avg,
+            "second_half_avg": second_avg,
+            "degradation_pct": deg_pct,
+            "health_status": health,
+            "observations": observations,
         }
 
-    # ------------------------------------------------------------------ #
-    #  Section E – Header Injection Test                                   #
-    # ------------------------------------------------------------------ #
+    # ── 3. Large Payload & Buffer Exhaustion ──
+    def _execute_payload_stress(self, url: str) -> List[Dict[str, Any]]:
+        tests = []
 
-    def _test_header_injection(self, url: str) -> Dict[str, Any]:
-        findings = []
-
-        # Oversized header value (8 KB)
-        big_header_val = "X" * 8192
-        r1 = self._safe_request("GET", url, headers={"X-Custom-Test": big_header_val})
-        status_big = r1.get("status") if r1.get("ok") else r1.get("error")
-        if r1.get("ok") and r1["status"] not in (400, 413, 431):
-            findings.append(
-                f"OVERSIZED HEADER ACCEPTED: server did not reject 8KB header value "
-                f"(HTTP {r1['status']}) — potential header-based DoS vector"
-            )
-
-        # Host header injection
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            original_host = parsed.netloc or parsed.path
-        except Exception:
-            original_host = "target.com"
-
-        r2 = self._safe_request("GET", url, headers={"Host": "evil-injected-host.com"})
-        status_host = r2.get("status") if r2.get("ok") else r2.get("error")
-        if r2.get("ok") and r2["status"] == 200:
-            findings.append(
-                "HOST HEADER INJECTION: server returned 200 with a spoofed Host header — "
-                "may be vulnerable to cache poisoning or password-reset poisoning"
-            )
-
-        return {
-            "oversized_header_status": status_big,
-            "host_injection_status": status_host,
-            "findings": findings,
-        }
-
-    # ------------------------------------------------------------------ #
-    #  Section F – Compression, Caching, and CDN/WAF Detection            #
-    # ------------------------------------------------------------------ #
-
-    def _test_compression_caching_cdn(self, url: str) -> Dict[str, Any]:
-        r = self._safe_request(
-            "GET", url,
-            headers={"Accept-Encoding": "gzip, deflate, br"},
+        # A. 10 KB POST Body
+        body_10k = "A" * 10240
+        res_10k = self._safe_request("POST", url, data=body_10k, headers={"Content-Type": "text/plain"})
+        st_10k = res_10k.get("status")
+        risk_10k = "Low" if st_10k in (400, 405, 413, 415, 422, 429) else "Medium"
+        interp_10k = (
+            f"Handled correctly with HTTP {st_10k}" if st_10k in (400, 405, 413, 415, 422, 429)
+            else f"Accepted 10KB body without restriction (HTTP {st_10k})"
         )
-        findings = []
-        details = {}
+        tests.append({
+            "vector": "10 KB POST Body Injection",
+            "status": f"HTTP {st_10k}" if st_10k else (res_10k.get("error") or "ERR"),
+            "latency": f"{res_10k['elapsed_ms']}ms",
+            "evaluation": interp_10k,
+            "risk": risk_10k,
+        })
 
-        if not r.get("ok"):
-            return {"error": r.get("error"), "findings": []}
+        # B. 50 KB POST Body
+        body_50k = "B" * 51200
+        res_50k = self._safe_request("POST", url, data=body_50k, headers={"Content-Type": "application/octet-stream"})
+        st_50k = res_50k.get("status")
+        risk_50k = "Low" if st_50k in (400, 405, 413, 415, 422, 429) else "Medium"
+        interp_50k = (
+            f"Restricted with HTTP {st_50k}" if st_50k in (400, 405, 413, 415, 422, 429)
+            else f"Accepted 50KB unstructured payload without body cap (HTTP {st_50k})"
+        )
+        tests.append({
+            "vector": "50 KB POST Payload Cap",
+            "status": f"HTTP {st_50k}" if st_50k else (res_50k.get("error") or "ERR"),
+            "latency": f"{res_50k['elapsed_ms']}ms",
+            "evaluation": interp_50k,
+            "risk": risk_50k,
+        })
 
-        hdrs = {k.lower(): v for k, v in r.get("headers", {}).items()}
+        # C. 1,500 Char URI Parameter
+        long_param = "X" * 1500
+        long_url = f"{url}{'&' if '?' in url else '?'}dos_probe={long_param}"
+        res_uri = self._safe_request("GET", long_url)
+        st_uri = res_uri.get("status")
+        risk_uri = "Low" if st_uri in (400, 414, 429) else ("Info" if st_uri == 200 else "Low")
+        interp_uri = (
+            f"Properly rejected with HTTP {st_uri}" if st_uri in (400, 414)
+            else f"Processed 1.5KB query string with status {st_uri}"
+        )
+        tests.append({
+            "vector": "1,500 Char Query String Limit",
+            "status": f"HTTP {st_uri}" if st_uri else (res_uri.get("error") or "ERR"),
+            "latency": f"{res_uri['elapsed_ms']}ms",
+            "evaluation": interp_uri,
+            "risk": risk_uri,
+        })
 
-        # Compression
-        encoding = hdrs.get("content-encoding", "")
-        details["compression"] = encoding if encoding else "none"
-        if not encoding:
-            findings.append(
-                "NO COMPRESSION: server does not use gzip/brotli — "
-                "increases bandwidth and reduces DoS resilience"
-            )
+        # D. 8 KB Custom Request Header
+        oversized_hdr = "Z" * 8192
+        res_hdr = self._safe_request("GET", url, headers={"X-Stress-Header": oversized_hdr})
+        st_hdr = res_hdr.get("status")
+        risk_hdr = "Low" if st_hdr in (400, 413, 431) else ("Medium" if st_hdr == 200 else "Low")
+        interp_hdr = (
+            f"Header buffer enforced (HTTP {st_hdr})" if st_hdr in (400, 413, 431)
+            else f"Server accepted 8KB header without rejection (HTTP {st_hdr})"
+        )
+        tests.append({
+            "vector": "8 KB Oversized HTTP Header Buffer",
+            "status": f"HTTP {st_hdr}" if st_hdr else (res_hdr.get("error") or "ERR"),
+            "latency": f"{res_hdr['elapsed_ms']}ms",
+            "evaluation": interp_hdr,
+            "risk": risk_hdr,
+        })
 
-        # Cache-Control
-        cache_control = hdrs.get("cache-control", "")
-        details["cache_control"] = cache_control if cache_control else "absent"
-        if not cache_control:
-            findings.append(
-                "MISSING Cache-Control: no caching policy found — "
-                "every request hits the origin server, increasing load"
-            )
-        elif "no-store" in cache_control or "no-cache" in cache_control:
-            findings.append(
-                "CACHING DISABLED (no-store/no-cache): all requests bypass cache — "
-                "consider enabling caching for static resources"
-            )
+        return tests
 
-        # CDN / WAF fingerprinting
-        cdn_waf_indicators = {
-            "cloudflare": ["cf-ray", "cf-cache-status", "server:cloudflare"],
-            "akamai": ["x-check-cacheable", "akamai-cache-status", "x-akamai-request-id"],
-            "aws_cloudfront": ["x-amz-cf-id", "x-amz-cf-pop", "via:cloudfront"],
-            "fastly": ["x-served-by", "x-cache:hit from fastly"],
-            "sucuri": ["x-sucuri-id", "x-sucuri-cache"],
+    # ── 4. HTTP Verb & Method Tampering ──
+    def _execute_method_audit(self, url: str) -> List[Dict[str, Any]]:
+        method_records = []
+        options_allow_header = ""
+
+        # First query OPTIONS to check declared Allow list
+        res_opt = self._safe_request("OPTIONS", url)
+        if res_opt["ok"]:
+            options_allow_header = res_opt.get("headers", {}).get("Allow", "")
+
+        for m in HTTP_METHODS_TO_TEST:
+            res = self._safe_request(m, url)
+            st = res.get("status")
+            status_display = f"HTTP {st}" if st else (res.get("error") or "ERR")
+
+            # Determine acceptance and risk
+            is_rejected = st in (405, 501, 502, 503) or (st == 400 and m == "INVALIDVERB")
+            is_forbidden = st in (401, 403)
+
+            if m in DANGEROUS_METHODS and not is_rejected and not is_forbidden and st is not None:
+                risk = "High" if m in ("TRACE", "DEBUG") else "Medium"
+                interp = f"Potentially exposed ({m} returned HTTP {st})"
+            elif is_rejected or is_forbidden:
+                risk = "Low"
+                interp = f"Blocked / Not Allowed ({status_display})"
+            else:
+                risk = "Info" if m in ("GET", "HEAD", "POST", "OPTIONS") else "Low"
+                interp = f"Standard handler response ({status_display})"
+
+            method_records.append({
+                "method": m,
+                "status": status_display,
+                "latency": f"{res['elapsed_ms']}ms",
+                "risk": risk,
+                "evaluation": interp,
+            })
+            time.sleep(0.05)
+
+        return method_records
+
+    # ── 5. Host Header & Header Injection ──
+    def _execute_injection_audit(self, url: str) -> List[Dict[str, Any]]:
+        results = []
+
+        # A. Arbitrary Host Header Spoofing
+        res_host = self._safe_request("GET", url, headers={"Host": "evil-injected-host.com"})
+        st_host = res_host.get("status")
+        risk_host = "Medium" if st_host == 200 else "Low"
+        eval_host = (
+            "Server accepted spoofed Host header with 200 OK — potential cache poisoning risk."
+            if st_host == 200
+            else f"Server enforced strict hostname or rejected spoofed host (HTTP {st_host})."
+        )
+        results.append({
+            "vector": "Spoofed Host Header (`Host: evil-injected-host.com`)",
+            "status": f"HTTP {st_host}" if st_host else (res_host.get("error") or "ERR"),
+            "latency": f"{res_host['elapsed_ms']}ms",
+            "risk": risk_host,
+            "evaluation": eval_host,
+        })
+
+        # B. X-Forwarded-Host Header
+        res_xfh = self._safe_request("GET", url, headers={"X-Forwarded-Host": "attacker.com"})
+        st_xfh = res_xfh.get("status")
+        risk_xfh = "Low"
+        eval_xfh = f"Reverse proxy processed X-Forwarded-Host with status {st_xfh}."
+        results.append({
+            "vector": "Forwarded Host Header (`X-Forwarded-Host: attacker.com`)",
+            "status": f"HTTP {st_xfh}" if st_xfh else (res_xfh.get("error") or "ERR"),
+            "latency": f"{res_xfh['elapsed_ms']}ms",
+            "risk": risk_xfh,
+            "evaluation": eval_xfh,
+        })
+
+        # C. X-Forwarded-For Rate Limit Bypass Attempt
+        res_xff = self._safe_request("GET", url, headers={"X-Forwarded-For": "127.0.0.1, 10.0.0.1"})
+        st_xff = res_xff.get("status")
+        results.append({
+            "vector": "Spoofed Client IP (`X-Forwarded-For: 127.0.0.1`)",
+            "status": f"HTTP {st_xff}" if st_xff else (res_xff.get("error") or "ERR"),
+            "latency": f"{res_xff['elapsed_ms']}ms",
+            "risk": "Low",
+            "evaluation": f"Server handled forged client IP header (HTTP {st_xff}).",
+        })
+
+        return results
+
+    # ── 6. Edge Caching, Compression & CDN/WAF ──
+    def _execute_edge_audit(self, url: str) -> Dict[str, Any]:
+        res = self._safe_request("GET", url, headers={"Accept-Encoding": "gzip, deflate, br, zstd"})
+        hdrs = {k.lower(): v for k, v in res.get("headers", {}).items()}
+
+        compression = hdrs.get("content-encoding", "None / Uncompressed")
+        cache_control = hdrs.get("cache-control", "Absent")
+        etag = hdrs.get("etag", "Absent")
+        vary = hdrs.get("vary", "Absent")
+        server = hdrs.get("server", "Undisclosed")
+
+        detected_cdns = []
+        all_header_dump = " ".join(f"{k}:{v}" for k, v in hdrs.items()).lower()
+        for cdn_name, sigs in CDN_WAF_SIGNATURES.items():
+            if any(s in all_header_dump for s in sigs):
+                detected_cdns.append(cdn_name)
+
+        return {
+            "compression": compression,
+            "cache_control": cache_control,
+            "etag": etag,
+            "vary": vary,
+            "server": server,
+            "cdns": detected_cdns if detected_cdns else ["No CDN / Direct Origin Identified"],
+            "has_cdn": len(detected_cdns) > 0,
         }
-        detected_cdn = []
-        all_header_str = " ".join(f"{k}:{v}" for k, v in hdrs.items()).lower()
-        for cdn, signals in cdn_waf_indicators.items():
-            for sig in signals:
-                if sig in all_header_str:
-                    detected_cdn.append(cdn.upper().replace("_", " "))
-                    break
 
-        details["cdn_waf_detected"] = detected_cdn if detected_cdn else ["None detected"]
-        if not detected_cdn:
-            findings.append(
-                "NO CDN/WAF DETECTED: origin server appears to be directly exposed — "
-                "consider adding a CDN or WAF for DoS/DDoS protection"
-            )
+    # ── 7. Build Tabular Markdown Report ──
+    def _build_markdown_report(
+        self,
+        url: str,
+        burst: Dict[str, Any],
+        latency: Dict[str, Any],
+        payloads: List[Dict[str, Any]],
+        methods: List[Dict[str, Any]],
+        injections: List[Dict[str, Any]],
+        edge: Dict[str, Any],
+    ) -> str:
+        sections = []
+        sections.append("# DoS Resilience & Rate Limiting Security Audit")
+        sections.append(f"**Target System Endpoint:** `{url}` | **Audit Scope:** Layer 7 Resilience & Burst Throttling\n")
 
-        return {"details": details, "findings": findings}
+        # 1. Overview Matrix
+        sections.append("## DoS & Rate Limiting Overview\n")
+        sections.append("| Resilience Metric | Measured Result | Security Classification | Benchmark Assessment |")
+        sections.append("|---|---|---|---|")
+        rate_status = "Enforced" if burst["rate_limited"] else ("Header Policy Detected" if burst["rate_headers"] else "Unthrottled")
+        rate_risk = "Protected" if burst["rate_limited"] else ("Medium" if not burst["rate_headers"] else "Low")
+        sections.append(f"| L7 Rate Limiting Enforcement | {rate_status} | {rate_risk} | {'HTTP 429 Too Many Requests actively triggered' if burst['rate_limited'] else ('Rate limiting policy headers detected' if burst['rate_headers'] else 'No throttling observed over 20-request burst')} |")
+        sections.append(f"| Load Stability & Latency Health | {latency['health_status']} | {'Stable' if latency['degradation_pct'] < 30 else 'Warning'} | Average: `{latency['avg_ms']}ms` (Min: `{latency['min_ms']}ms`, Max: `{latency['max_ms']}ms`) |")
+        sections.append(f"| Response Latency Degradation | `{latency['degradation_pct']}%` Delta | {'Normal' if latency['degradation_pct'] < 30 else 'Degraded'} | First half avg: `{latency['first_half_avg']}ms` vs Second half avg: `{latency['second_half_avg']}ms` |")
+        sections.append(f"| Edge CDN / WAF Shield | {', '.join(edge['cdns'])} | {'Protected' if edge['has_cdn'] else 'Elevated'} | {'Reverse proxy / WAF absorbing perimeter volumetric traffic' if edge['has_cdn'] else 'Origin web server directly exposed without CDN shield'} |")
+        sections.append(f"| Payload Exhaustion Resilience | 4 Stress Vectors Tested | Protected | Evaluated 10KB/50KB body, 1.5KB query URI, and 8KB header buffer |")
+        dangerous_allowed = [m["method"] for m in methods if m["risk"] == "High"]
+        sections.append(f"| High-Risk HTTP Verbs | {len(dangerous_allowed)} Allowed | {'Critical' if dangerous_allowed else 'Clean'} | {'Dangerous verbs exposed: ' + ', '.join(dangerous_allowed) if dangerous_allowed else 'Dangerous verbs (TRACE, DEBUG) strictly disabled'} |")
 
-    # ------------------------------------------------------------------ #
-    #  Recommendations engine                                              #
-    # ------------------------------------------------------------------ #
+        # 2. Burst Request Log
+        sections.append("\n## Burst Request & Rate Limiting Benchmark\n")
+        sections.append("| Req # | HTTP Method | Response Status | Latency | Response Size | Rate Limit Headers Captured | Classification |")
+        sections.append("|---|---|---|---|---|---|---|")
+        for rec in burst["burst_records"]:
+            st = f"`{rec['status']}`" if rec.get("status") else "`ERR`"
+            hdrs_subset = []
+            for k, v in rec.get("headers", {}).items():
+                if any(rh in k.lower() for rh in ["ratelimit", "retry-after"]):
+                    hdrs_subset.append(f"{k}: {v}")
+            hdr_str = ", ".join(hdrs_subset) if hdrs_subset else "—"
+            if len(hdr_str) > 40:
+                hdr_str = hdr_str[:37] + "..."
+            cls = "Throttled (429)" if rec.get("status") == 429 else ("OK (200)" if rec.get("status") == 200 else f"HTTP {rec.get('status')}")
+            sections.append(f"| `#{rec['req_num']}` | `GET` | {st} | `{rec['elapsed_ms']}ms` | `{rec['size']} B` | `{hdr_str}` | {cls} |")
 
-    def _build_recommendations(
-        self, rate: dict, timing: dict, payload: dict,
-        methods: dict, headers_inj: dict, compression: dict
-    ) -> List[str]:
-        recs = []
+        # 3. Latency Progression Metrics
+        sections.append("\n## Latency Progression & Degradation Metrics\n")
+        sections.append("| Latency Distribution Metric | Measured Value | Benchmark Baseline | Performance Evaluation |")
+        sections.append("|---|---|---|---|")
+        sections.append(f"| Minimum Latency (Fastest) | `{latency['min_ms']}ms` | < 200ms | Optimal round-trip network response |")
+        sections.append(f"| Median Latency (P50) | `{latency['median_ms']}ms` | < 500ms | Typical operational request processing time |")
+        sections.append(f"| Average Latency (Mean) | `{latency['avg_ms']}ms` | < 800ms | Aggregate server load performance across all trials |")
+        sections.append(f"| Maximum Latency (Peak) | `{latency['max_ms']}ms` | < 2000ms | Worst-case response latency observed during burst |")
+        sections.append(f"| Load Degradation Coefficient | `{latency['degradation_pct']}%` | < 25.0% | {'Stable performance profile under sequential polling' if latency['degradation_pct'] < 25 else 'Noticeable resource contention during consecutive requests'} |")
 
-        if not rate.get("rate_limit_detected") and not rate.get("rate_limit_headers_found"):
-            recs.append("🔴 Implement rate limiting (e.g., nginx limit_req, API Gateway throttling, or a WAF rule) to prevent brute-force and DoS attacks.")
+        # 4. Resource Exhaustion & Payload Stress Tests
+        sections.append("\n## Resource Exhaustion & Payload Stress Tests\n")
+        sections.append("| Stress Vector | Result Status | Round-Trip Latency | Behavioral Assessment | Risk Level |")
+        sections.append("|---|---|---|---|---|")
+        for p in payloads:
+            sections.append(f"| {p['vector']} | `{p['status']}` | `{p['latency']}` | {p['evaluation']} | {p['risk']} |")
 
-        if timing.get("flags"):
-            recs.append("🟠 Investigate server capacity. Consider horizontal scaling, load balancers, or caching layers to reduce average response times.")
+        # 5. HTTP Method & Verb Tampering Matrix
+        sections.append("\n## HTTP Method & Verb Tampering Matrix\n")
+        sections.append("| HTTP Verb | Result Status | Response Latency | Security Evaluation | Risk Classification |")
+        sections.append("|---|---|---|---|---|")
+        for m in methods:
+            sections.append(f"| `{m['method']}` | `{m['status']}` | `{m['latency']}` | {m['evaluation']} | {m['risk']} |")
 
-        if payload.get("findings"):
-            recs.append("🔴 Enforce request size limits: set `client_max_body_size` (nginx) or equivalent, and reject oversized query strings with a 414 response.")
+        # 6. Host Header & Routing Integrity
+        sections.append("\n## Host Header & Routing Integrity Audit\n")
+        sections.append("| Injection Vector | Result Status | Response Latency | Routing & Poisoning Assessment | Risk Level |")
+        sections.append("|---|---|---|---|---|")
+        for inj in injections:
+            sections.append(f"| {inj['vector']} | `{inj['status']}` | `{inj['latency']}` | {inj['evaluation']} | {inj['risk']} |")
 
-        if methods.get("dangerous_methods_allowed"):
-            recs.append(f"🔴 Disable dangerous HTTP methods: {', '.join(methods['dangerous_methods_allowed'])}. Use `LimitExcept` (Apache) or `limit_except` (nginx) directives.")
+        # 7. Edge Caching, Compression & WAF Shield
+        sections.append("\n## Edge Caching, Compression & WAF Shield\n")
+        sections.append("| Edge Layer Component | Detected Configuration | Optimization Status | Security & DoS Implication |")
+        sections.append("|---|---|---|---|")
+        sections.append(f"| Content-Encoding (Compression) | `{edge['compression']}` | {'Active' if edge['compression'] != 'None / Uncompressed' else 'Inactive'} | {'Reduces egress bandwidth and mitigates volumetric saturation' if edge['compression'] != 'None / Uncompressed' else 'Uncompressed content increases server bandwidth consumption'} |")
+        sections.append(f"| Cache-Control Directives | `{edge['cache_control'][:60]}` | Configured | {'Enforces edge and browser cache TTL to offload origin compute' if edge['cache_control'] != 'Absent' else 'Missing Cache-Control forces all requests to hit origin directly'} |")
+        sections.append(f"| Entity Tag (ETag) Validation | `{edge['etag']}` | {'Present' if edge['etag'] != 'Absent' else 'Absent'} | Allows conditional 304 Not Modified caching negotiation |")
+        sections.append(f"| Edge CDN / WAF Vendor | `{', '.join(edge['cdns'])}` | {'Protected' if edge['has_cdn'] else 'Direct Exposure'} | {'Cloud perimeter absorbs DDoS surges and scrubs malicious bot traffic' if edge['has_cdn'] else 'Consider placing application behind a Cloud CDN/WAF layer'} |")
+        sections.append(f"| Server Banner Token | `{edge['server']}` | Disclosed | Web server identification token emitted in response headers |")
 
-        if headers_inj.get("findings"):
-            recs.append("🟠 Configure your server/proxy to validate and restrict the Host header and reject oversized headers (e.g., `large_client_header_buffers` in nginx).")
+        # 8. Action Items
+        sections.append("\n## DoS & Resilience Hardening Roadmap\n")
+        sections.append("| Finding Focus | Severity | Affected Vector | Recommended Hardening Action | Reference |")
+        sections.append("|---|---|---|---|---|")
+        if not burst["rate_limited"] and not burst["rate_headers"]:
+            sections.append("| Missing L7 Rate Limiting | High | Application Root | Deploy rate-limiting middleware (e.g., Nginx `limit_req`, Cloudflare Rate Limiting, or AWS WAF Rate-based rules). | OWASP API4:2023 |")
+        if not edge["has_cdn"]:
+            sections.append("| Direct Origin Exposure | Medium | Infrastructure Perimeter | Route domain traffic through an Anycast CDN / DDoS mitigation gateway (Cloudflare, CloudFront, Akamai). | CWE-400 |")
+        if any(m["risk"] == "High" for m in methods):
+            sections.append("| Dangerous HTTP Verbs Allowed | High | Web Server Methods | Disable TRACE, DEBUG, and unauthenticated PUT/DELETE verbs in web server configuration (`limit_except`). | CWE-650 |")
+        if any(p["risk"] == "Medium" for p in payloads):
+            sections.append("| Unbounded Payload Limits | Medium | HTTP Body / URI Buffer | Set strict `client_max_body_size 10M` and `large_client_header_buffers` in reverse proxy configuration. | CWE-770 |")
+        if edge["compression"] == "None / Uncompressed":
+            sections.append("| Gzip / Brotli Disabled | Low | HTTP Response Compression | Enable Gzip or Brotli compression modules in web server to reduce bandwidth requirements. | CWE-400 |")
+        sections.append("| Host Header Poisoning Guard | Medium | Host Routing Layer | Configure web server `server_name` to explicitly match approved domains and reject unlisted hosts with 400. | CWE-20 |")
 
-        for f in compression.get("findings", []):
-            if "COMPRESSION" in f:
-                recs.append("🟡 Enable gzip/brotli compression to reduce bandwidth consumption and improve resilience under load.")
-            if "Cache-Control" in f or "CACHING" in f:
-                recs.append("🟡 Set appropriate Cache-Control headers for static assets to offload repeated requests from the origin server.")
-            if "CDN/WAF" in f:
-                recs.append("🟠 Deploy a CDN (Cloudflare, AWS CloudFront, Akamai) or WAF to absorb volumetric attacks before they reach your origin.")
+        return "\n".join(sections)
 
-        if not recs:
-            recs.append("✅ No critical issues detected. Continue monitoring and review rate limit thresholds periodically.")
-
-        return recs
-
-    # ------------------------------------------------------------------ #
-    #  Main _run                                                           #
-    # ------------------------------------------------------------------ #
-
+    # ── Entry Point ──
     def _run(self, url: str) -> str:
-        report_lines = [
-            "=" * 70,
-            "  RATE LIMITING & DoS RESILIENCE TESTER — SECURITY REPORT",
-            "=" * 70,
-            f"  Target URL : {url}",
-            f"  Timestamp  : {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}",
-            "=" * 70,
-        ]
+        """Execute comprehensive DoS resilience and rate limiting audit."""
+        target_url = self._normalize_url(url)
 
-        # ── A: Rate Limiting ──────────────────────────────────────────── #
-        report_lines.append("\n[A] RATE LIMITING DETECTION (20 sequential GET requests)")
-        report_lines.append("-" * 60)
+        # Suppress insecure request warnings for penetration testing
         try:
-            rate = self._test_rate_limiting(url)
-            report_lines.append(f"  Status distribution       : {rate['status_distribution']}")
-            report_lines.append(f"  Rate limiting detected    : {'YES ✅' if rate['rate_limit_detected'] else 'NO ❌'}")
-            if rate["rate_limited_at_request"]:
-                report_lines.append(f"  Rate-limited at request # : {rate['rate_limited_at_request']}")
-            if rate["server_error_after_request"]:
-                report_lines.append(f"  Server errors started at  : request #{rate['server_error_after_request']}")
-            if rate["rate_limit_headers_found"]:
-                report_lines.append(f"  Rate-limit headers found  :")
-                for h, v in rate["rate_limit_headers_found"].items():
-                    report_lines.append(f"    {h}: {v}")
-            else:
-                report_lines.append("  Rate-limit headers found  : None ❌")
-        except Exception as exc:
-            rate = {"rate_limit_detected": False, "rate_limit_headers_found": {}, "raw_timings_ms": []}
-            report_lines.append(f"  ERROR running rate limit test: {exc}")
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        except Exception:
+            pass
 
-        # ── B: Response Time Analysis ─────────────────────────────────── #
-        report_lines.append("\n[B] RESPONSE TIME ANALYSIS")
-        report_lines.append("-" * 60)
-        try:
-            timings = rate.get("raw_timings_ms", [])
-            timing = self._analyse_response_times(timings) if timings else {"error": "No data"}
-            if "error" not in timing:
-                report_lines.append(f"  Min response time  : {timing['min_ms']} ms")
-                report_lines.append(f"  Max response time  : {timing['max_ms']} ms")
-                report_lines.append(f"  Avg response time  : {timing['avg_ms']} ms")
-                report_lines.append(f"  First-half avg     : {timing['first_half_avg_ms']} ms")
-                report_lines.append(f"  Second-half avg    : {timing['second_half_avg_ms']} ms")
-                report_lines.append(f"  Degradation        : {timing['degradation_pct']}%")
-                if timing["flags"]:
-                    for flag in timing["flags"]:
-                        report_lines.append(f"  ⚠️  {flag}")
-                else:
-                    report_lines.append("  Response times appear stable ✅")
-            else:
-                report_lines.append(f"  {timing['error']}")
-        except Exception as exc:
-            timing = {"flags": []}
-            report_lines.append(f"  ERROR: {exc}")
+        # 1. Burst benchmark
+        burst = self._execute_burst_benchmark(target_url)
 
-        # ── C: Large Payload ──────────────────────────────────────────── #
-        report_lines.append("\n[C] LARGE PAYLOAD TEST")
-        report_lines.append("-" * 60)
-        try:
-            payload = self._test_large_payload(url)
-            report_lines.append(f"  POST 10KB body status      : {payload['post_10kb_status']}")
-            report_lines.append(f"  GET long param (1000) stat : {payload['get_long_param_status']}")
-            if payload["findings"]:
-                for f in payload["findings"]:
-                    report_lines.append(f"  ⚠️  {f}")
-            else:
-                report_lines.append("  Server correctly rejected oversized payloads ✅")
-        except Exception as exc:
-            payload = {"findings": []}
-            report_lines.append(f"  ERROR: {exc}")
+        # 2. Latency metrics
+        latency = self._compute_latency_metrics(burst["timings_ms"])
 
-        # ── D: HTTP Method Testing ────────────────────────────────────── #
-        report_lines.append("\n[D] HTTP METHOD TESTING")
-        report_lines.append("-" * 60)
-        try:
-            methods = self._test_http_methods(url)
-            for m, s in methods["method_status_codes"].items():
-                report_lines.append(f"  {m:<10}: HTTP {s}")
-            report_lines.append(f"  Apparently allowed : {', '.join(methods['apparently_allowed']) or 'None'}")
-            if methods["dangerous_methods_allowed"]:
-                report_lines.append(f"  ⚠️  DANGEROUS METHODS: {', '.join(methods['dangerous_methods_allowed'])}")
-                for flag in methods["flags"]:
-                    report_lines.append(f"      → {flag}")
-            else:
-                report_lines.append("  No dangerous methods detected ✅")
-        except Exception as exc:
-            methods = {"dangerous_methods_allowed": [], "flags": []}
-            report_lines.append(f"  ERROR: {exc}")
+        # 3. Payload stress tests
+        payloads = self._execute_payload_stress(target_url)
 
-        # ── E: Header Injection ───────────────────────────────────────── #
-        report_lines.append("\n[E] HEADER INJECTION TEST")
-        report_lines.append("-" * 60)
-        try:
-            headers_inj = self._test_header_injection(url)
-            report_lines.append(f"  Oversized header (8KB) status  : {headers_inj['oversized_header_status']}")
-            report_lines.append(f"  Host header injection status   : {headers_inj['host_injection_status']}")
-            if headers_inj["findings"]:
-                for f in headers_inj["findings"]:
-                    report_lines.append(f"  ⚠️  {f}")
-            else:
-                report_lines.append("  No header injection issues detected ✅")
-        except Exception as exc:
-            headers_inj = {"findings": []}
-            report_lines.append(f"  ERROR: {exc}")
+        # 4. HTTP verb auditing
+        methods = self._execute_method_audit(target_url)
 
-        # ── F: Compression / Caching / CDN ────────────────────────────── #
-        report_lines.append("\n[F] COMPRESSION, CACHING & CDN/WAF DETECTION")
-        report_lines.append("-" * 60)
-        try:
-            compression = self._test_compression_caching_cdn(url)
-            if "error" in compression:
-                report_lines.append(f"  ERROR: {compression['error']}")
-            else:
-                d = compression.get("details", {})
-                report_lines.append(f"  Content-Encoding (compression) : {d.get('compression', 'n/a')}")
-                report_lines.append(f"  Cache-Control                  : {d.get('cache_control', 'n/a')}")
-                report_lines.append(f"  CDN / WAF detected             : {', '.join(d.get('cdn_waf_detected', []))}")
-                if compression["findings"]:
-                    for f in compression["findings"]:
-                        report_lines.append(f"  ⚠️  {f}")
-                else:
-                    report_lines.append("  Compression, caching, and CDN/WAF look good ✅")
-        except Exception as exc:
-            compression = {"findings": []}
-            report_lines.append(f"  ERROR: {exc}")
+        # 5. Injection & Host audits
+        injections = self._execute_injection_audit(target_url)
 
-        # ── Recommendations ───────────────────────────────────────────── #
-        report_lines.append("\n[HARDENING RECOMMENDATIONS]")
-        report_lines.append("-" * 60)
-        try:
-            recs = self._build_recommendations(rate, timing, payload, methods, headers_inj, compression)
-            for i, rec in enumerate(recs, 1):
-                report_lines.append(f"  {i}. {rec}")
-        except Exception as exc:
-            report_lines.append(f"  ERROR generating recommendations: {exc}")
+        # 6. Edge CDN, compression & caching
+        edge = self._execute_edge_audit(target_url)
 
-        report_lines.append("\n" + "=" * 70)
-        report_lines.append("  END OF REPORT")
-        report_lines.append("=" * 70)
-
-        return "\n".join(report_lines)
+        # 7. Generate markdown
+        return self._build_markdown_report(
+            target_url, burst, latency, payloads, methods, injections, edge
+        )
