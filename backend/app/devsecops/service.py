@@ -331,6 +331,7 @@ from app.devsecops.crew_tools.tools.metadata_information_disclosure_extractor im
 from app.devsecops.crew_tools.tools.rate_limiting_dos_resilience_tester import RateLimitingDoSResilienceTesterTool
 from app.devsecops.crew_tools.tools.sql_injection_vulnerability_tester import SqlInjectionVulnerabilityTesterTool
 from app.devsecops.crew_tools.tools.authentication_security_tester import AuthenticationSecurityTesterTool
+from app.devsecops.crew_tools.tools.cve_owasp_intelligence_analyzer import CveOwaspIntelligenceAnalyzerTool
 
 def _execute_native_stage(target: str, stage_index: int, prior_reports: list[str]) -> str:
     """Executes a deep, comprehensive security scan for the selected pipeline stage using real live tools."""
@@ -443,38 +444,15 @@ def _execute_native_stage(target: str, stage_index: int, prior_reports: list[str
         elif stage_index == 6:
             # Stage 6: CVE and OWASP Analysis
             prior_context = "\n\n".join(prior_reports)
-            ai_cve_analysis = _llm_synthesize(
-                prompt=f"Perform deep CVE and OWASP Top 10 analysis for target {target} based on all gathered intelligence:\n\n{prior_context}",
-                system_prompt="You are an elite Principal Security Architect. Structure your report with detailed Markdown tables, CVSS v3.1 scores, exact OWASP Top 10 mappings (A01:2021 to A10:2021), threat vectors, and multi-step attack chain scenarios."
-            )
+            
+            cve_owasp_output = ""
+            try:
+                cve_owasp_output = CveOwaspIntelligenceAnalyzerTool()._run(target=target, prior_context=prior_context)
+            except Exception as e:
+                cve_owasp_output = f"⚠️ CVE & OWASP Analysis Warning: {str(e)}"
 
-            if ai_cve_analysis:
-                return ai_cve_analysis
+            return clean_report_markdown(cve_owasp_output)
 
-            return f"""## CVE & OWASP Top 10 Security Matrix for `{target}`
-**Target:** `{target}`  
-**Assessment Engine:** Threat Modeling & Intelligence Feed  
-**Standards:** OWASP Top 10:2021, NIST SP 800-53, CVSS v3.1
-
-### 1. OWASP Top 10 Mapping & CVSS Breakdown
-| OWASP Category | Vulnerability / Exposure | Severity | CVSS v3.1 | Status |
-|---|---|---|---|---|
-| **A01:2021 — Broken Access Control** | Directory listing & unauthenticated public routes | Medium | 5.3 | Requires Auth Gate |
-| **A02:2021 — Cryptographic Failures** | Missing HSTS `Strict-Transport-Security` header | High | 7.5 | Insecure Downgrade Risk |
-| **A05:2021 — Security Misconfiguration** | Missing `Content-Security-Policy` & `X-Frame-Options` | High | 7.1 | XSS & Clickjacking Exposure |
-| **A07:2021 — Identification & Authentication** | Rate limiting / lockout on login endpoints | Medium | 5.8 | Monitored |
-| **A09:2021 — Security Logging Failures** | Public header information disclosure (`Server`, `X-Powered-By`) | Low | 3.7 | Fingerprinting Risk |
-
-### 2. Multi-Step Exploit Attack Chain
-1. **Perimeter Probing:** Attacker scans DNS topology and discovers exposed API routes and missing security headers.
-2. **Transport Downgrade:** Because HSTS is omitted, user traffic on insecure public WiFi can be downgraded from HTTPS to plaintext HTTP.
-3. **Session Hijacking / Clickjacking:** Missing `X-Frame-Options` and `Content-Security-Policy` allows attacker to iframe the application, capturing user keystrokes and authentication tokens.
-
-### 3. Immediate Action Plan
-- Deploy `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` across all domains.
-- Configure strict `Content-Security-Policy` prohibiting unauthorized script injections.
-- Mask all server banners and software version headers at edge CDN/WAF.
-"""
 
         elif stage_index == 7:
             # Stage 7: Executive Report
