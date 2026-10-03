@@ -1,13 +1,4 @@
-try:
-    from app.devsecops.crew_tools.tools.base import BaseTool
-except Exception:
-    try:
-        from .base import BaseTool
-    except Exception:
-        from pydantic import BaseModel
-        class BaseTool(BaseModel):  # type: ignore
-            pass
-
+from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import Type, List, Dict, Set
 import requests

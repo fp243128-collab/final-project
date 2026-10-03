@@ -1,13 +1,4 @@
-try:
-    from app.devsecops.crew_tools.tools.base import BaseTool
-except Exception:
-    try:
-        from .base import BaseTool
-    except Exception:
-        from pydantic import BaseModel
-        class BaseTool(BaseModel):  # type: ignore
-            pass
-
+from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import Type, List, Optional, Dict, Any
 import requests
@@ -115,20 +106,20 @@ class DnsIpReconTool(BaseTool):
         """Find SPF record and analyze its strictness."""
         spf_record = next((r for r in txt_records if "v=spf1" in r.lower()), None)
         if not spf_record:
-            return {"found": False, "record": None, "issues": [" No SPF record found — domain is vulnerable to email spoofing."]}
+            return {"found": False, "record": None, "issues": ["⚠️ No SPF record found — domain is vulnerable to email spoofing."]}
 
         issues: List[str] = []
         if "~all" in spf_record:
-            issues.append("SPF uses '~all' (SoftFail) — consider upgrading to '-all' (HardFail) for stricter enforcement.")
+            issues.append("⚠️ SPF uses '~all' (SoftFail) — consider upgrading to '-all' (HardFail) for stricter enforcement.")
         elif "+all" in spf_record:
-            issues.append("SPF uses '+all' — this allows ANY server to send mail. Extremely permissive and dangerous!")
+            issues.append("🚨 SPF uses '+all' — this allows ANY server to send mail. Extremely permissive and dangerous!")
         elif "?all" in spf_record:
-            issues.append("SPF uses '?all' (Neutral) — provides no meaningful protection.")
+            issues.append("⚠️ SPF uses '?all' (Neutral) — provides no meaningful protection.")
         elif "-all" in spf_record:
-            issues.append("SPF uses '-all' (HardFail) — good strict configuration.")
+            issues.append("✅ SPF uses '-all' (HardFail) — good strict configuration.")
 
         if "redirect=" in spf_record:
-            issues.append("SPF uses a 'redirect' modifier — ensure the target domain has a valid SPF policy.")
+            issues.append("ℹ️ SPF uses a 'redirect' modifier — ensure the target domain has a valid SPF policy.")
 
         return {"found": True, "record": spf_record, "issues": issues}
 
@@ -148,9 +139,9 @@ class DnsIpReconTool(BaseTool):
             issues.append("✅ DMARC policy is 'reject' — strongest enforcement level.")
 
         if "rua=" not in dmarc_record.lower():
-            issues.append(" No aggregate report URI (rua=) — consider adding one for visibility.")
+            issues.append("ℹ️ No aggregate report URI (rua=) — consider adding one for visibility.")
         if "ruf=" not in dmarc_record.lower():
-            issues.append("No forensic report URI (ruf=) — optional but useful for incident investigation.")
+            issues.append("ℹ️ No forensic report URI (ruf=) — optional but useful for incident investigation.")
 
         return {"found": True, "record": dmarc_record, "issues": issues}
 
@@ -195,7 +186,7 @@ class DnsIpReconTool(BaseTool):
         lines: List[str] = []
 
         # ── Header ──
-        lines.append(f"#  DNS & IP Reconnaissance Report")
+        lines.append(f"# 🔍 DNS & IP Reconnaissance Report")
         lines.append(f"\n**Target:** `{target}`  ")
         lines.append(f"**Resolved Domain:** `{domain}`  ")
         if resolved_ip:
@@ -204,12 +195,12 @@ class DnsIpReconTool(BaseTool):
 
         # ── DNS Records ──
         lines.append("---")
-        lines.append("##  DNS Records")
+        lines.append("## 📡 DNS Records")
 
         # A Records
-        lines.append("\n###  A Records")
+        lines.append("\n### 🅰️ A Records")
         if a_data and "error" in a_data:
-            lines.append(f"> Error: {a_data['error']}")
+            lines.append(f"> ❌ Error: {a_data['error']}")
         elif a_records:
             for r in a_records:
                 lines.append(f"- `{r}`")
@@ -217,9 +208,9 @@ class DnsIpReconTool(BaseTool):
             lines.append("- *(No A records found)*")
 
         # MX Records
-        lines.append("\n###  MX Records")
+        lines.append("\n### 📧 MX Records")
         if mx_data and "error" in mx_data:
-            lines.append(f"> Error: {mx_data['error']}")
+            lines.append(f"> ❌ Error: {mx_data['error']}")
         elif mx_records:
             for r in mx_records:
                 lines.append(f"- `{r}`")
@@ -227,9 +218,9 @@ class DnsIpReconTool(BaseTool):
             lines.append("- *(No MX records found)*")
 
         # NS Records
-        lines.append("\n###  NS Records")
+        lines.append("\n### 🏷️ NS Records")
         if ns_data and "error" in ns_data:
-            lines.append(f"> Error: {ns_data['error']}")
+            lines.append(f"> ❌ Error: {ns_data['error']}")
         elif ns_records:
             for r in ns_records:
                 lines.append(f"- `{r}`")
@@ -237,9 +228,9 @@ class DnsIpReconTool(BaseTool):
             lines.append("- *(No NS records found)*")
 
         # CNAME Records
-        lines.append("\n###  CNAME Records")
+        lines.append("\n### 🔗 CNAME Records")
         if cname_data and "error" in cname_data:
-            lines.append(f"> Error: {cname_data['error']}")
+            lines.append(f"> ❌ Error: {cname_data['error']}")
         elif cname_records:
             for r in cname_records:
                 lines.append(f"- `{r}`")
@@ -247,9 +238,9 @@ class DnsIpReconTool(BaseTool):
             lines.append("- *(No CNAME records found)*")
 
         # TXT Records
-        lines.append("\n###  TXT Records")
+        lines.append("\n### 📝 TXT Records")
         if txt_data and "error" in txt_data:
-            lines.append(f"> Error: {txt_data['error']}")
+            lines.append(f"> ❌ Error: {txt_data['error']}")
         elif txt_records:
             for r in txt_records:
                 lines.append(f"- `{r}`")
@@ -257,9 +248,9 @@ class DnsIpReconTool(BaseTool):
             lines.append("- *(No TXT records found)*")
 
         # DMARC TXT (separate subdomain)
-        lines.append("\n### DMARC TXT Records (`_dmarc` subdomain)")
+        lines.append("\n### 🛡️ DMARC TXT Records (`_dmarc` subdomain)")
         if dmarc_txt_data and "error" in dmarc_txt_data:
-            lines.append(f"> Error: {dmarc_txt_data['error']}")
+            lines.append(f"> ❌ Error: {dmarc_txt_data['error']}")
         elif dmarc_records:
             for r in dmarc_records:
                 lines.append(f"- `{r}`")
@@ -268,10 +259,10 @@ class DnsIpReconTool(BaseTool):
 
         # ── IP & Geo Info ──
         lines.append("\n---")
-        lines.append("## IP Geolocation & ASN Info")
+        lines.append("## 🌐 IP Geolocation & ASN Info")
         if ip_info:
             if "error" in ip_info:
-                lines.append(f"> Error fetching IP info: {ip_info['error']}")
+                lines.append(f"> ❌ Error fetching IP info: {ip_info['error']}")
             else:
                 def _val(key: str, label: str) -> str:
                     v = ip_info.get(key)
@@ -297,7 +288,7 @@ class DnsIpReconTool(BaseTool):
 
         # ── Security Findings ──
         lines.append("\n---")
-        lines.append("## Security Findings")
+        lines.append("## 🔐 Security Findings")
 
         all_issues: List[str] = []
 
@@ -326,17 +317,17 @@ class DnsIpReconTool(BaseTool):
                 lines.append(f"- {w}")
                 all_issues.append(w)
         else:
-            lines.append("- No subdomain takeover indicators detected in CNAME records.")
+            lines.append("- ✅ No subdomain takeover indicators detected in CNAME records.")
 
         # ── Summary ──
         lines.append("\n---")
-        lines.append("## Summary")
+        lines.append("## 📋 Summary")
         if all_issues:
             lines.append(f"\n**{len(all_issues)} security issue(s) found:**\n")
             for i, issue in enumerate(all_issues, 1):
                 lines.append(f"{i}. {issue}")
         else:
-            lines.append("\n **No critical security issues detected.** DNS configuration looks healthy.")
+            lines.append("\n✅ **No critical security issues detected.** DNS configuration looks healthy.")
 
         lines.append("\n---")
         lines.append("*Report generated by DNS and IP Reconnaissance Tool via Google Public DNS & ipapi.co*")

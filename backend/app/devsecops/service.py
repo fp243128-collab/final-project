@@ -240,6 +240,19 @@ import ssl
 import time
 
 def _llm_synthesize(prompt: str, system_prompt: str = "You are an elite DevSecOps security analyst. Generate clean, structured markdown.") -> str:
+    # Load backend root .env if not already loaded
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip())
+        except Exception:
+            pass
+
     api_key = (
         os.getenv("GEMINI_API_KEY") 
         or os.getenv("GOOGLE_API_KEY") 
@@ -250,7 +263,7 @@ def _llm_synthesize(prompt: str, system_prompt: str = "You are an elite DevSecOp
     if not api_key:
         return ""
 
-    candidate_models = ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-pro"]
+    candidate_models = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest"]
     
     # Method 1: SDK
     for model_name in candidate_models:

@@ -1,13 +1,4 @@
-try:
-    from app.devsecops.crew_tools.tools.base import BaseTool
-except Exception:
-    try:
-        from .base import BaseTool
-    except Exception:
-        from pydantic import BaseModel
-        class BaseTool(BaseModel):  # type: ignore
-            pass
-
+from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import Type, Dict, Any, List, Optional
 import requests
@@ -168,7 +159,7 @@ def _build_report(url: str, cookies_analysis: List[Dict[str, Any]], response_url
     risk_counts = {"🔴 Critical": 0, "🟠 High": 0, "🟡 Medium": 0, "🟢 Low": 0}
 
     lines: List[str] = []
-    lines.append("# Cookie Security Analysis Report")
+    lines.append("# 🍪 Cookie Security Analysis Report")
     lines.append(f"\n**Target URL:** `{url}`")
     lines.append(f"**Final URL (after redirects):** `{response_url}`")
     lines.append(f"**HTTP Status:** `{status_code}`")
@@ -214,22 +205,22 @@ def _build_report(url: str, cookies_analysis: List[Dict[str, Any]], response_url
 
         # Expiry
         if info["expires"]:
-            lines.append(f"| **Expires** | Persistent — `{info['expires']}` |")
+            lines.append(f"| **Expires** | 📅 Persistent — `{info['expires']}` |")
         else:
-            lines.append(f"| **Expires** | Session cookie (cleared on browser close) |")
+            lines.append(f"| **Expires** | 🔄 Session cookie (cleared on browser close) |")
 
         # Sensitive
-        lines.append(f"| **Sensitive Name Pattern** | {'Yes' if info['is_sensitive'] else 'No'} |")
+        lines.append(f"| **Sensitive Name Pattern** | {'⚠️ Yes' if info['is_sensitive'] else 'No'} |")
 
         # JWT
-        lines.append(f"| **JWT Detected** | {'Yes' if info['is_jwt'] else 'No'} |")
+        lines.append(f"| **JWT Detected** | {'🔑 Yes' if info['is_jwt'] else 'No'} |")
 
         lines.append("")
 
         # JWT details block
         if info["is_jwt"] and info["jwt_details"]:
             jwt = info["jwt_details"]
-            lines.append("#### JWT Token Details (decoded without verification)\n")
+            lines.append("#### 🔑 JWT Token Details (decoded without verification)\n")
             alg = jwt["header"].get("alg", "N/A")
             typ = jwt["header"].get("typ", "N/A")
             lines.append(f"- **Algorithm:** `{alg}`")
@@ -257,7 +248,7 @@ def _build_report(url: str, cookies_analysis: List[Dict[str, Any]], response_url
 
     # ── Summary ──────────────────────────────────────────────────────────────
     lines.append("---\n")
-    lines.append("## Overall Security Posture\n")
+    lines.append("## 📊 Overall Security Posture\n")
     lines.append("| Risk Level | Count |")
     lines.append("|---|---|")
     for level, count in risk_counts.items():
