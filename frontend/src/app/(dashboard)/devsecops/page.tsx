@@ -13,7 +13,8 @@ import {
   Layers,
   RefreshCw,
   Lock,
-  Globe
+  Globe,
+  AlertTriangle
 } from "lucide-react";
 
 interface PipelineStage {
