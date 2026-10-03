@@ -34,33 +34,23 @@ export function Sidebar() {
 
         <div>
           <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2 px-3">
-            Security
+            Security Audit
+          </div>
+          <div className="space-y-1">
+            <NavItem href="/devsecops" icon={<Shield className="text-cyan-500" />} label="DevSecOps AI Audit" />
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2 px-3">
+            Threat & Operations
           </div>
           <div className="space-y-1">
             <NavItem href="/threats" icon={<ShieldAlert />} label="Threat Detection" />
             <NavItem href="/alerts" icon={<Bell />} label="Alert Center" />
             <NavItem href="/risk" icon={<AlertTriangle />} label="Risk Center" />
             <NavItem href="/analytics" icon={<BarChart2 />} label="Analytics" />
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2 px-3">
-            Cloud Security
-          </div>
-          <div className="space-y-1">
-            <NavItem href="/cspm" icon={<FileSearch />} label="CSPM" />
-            <NavItem href="/resources" icon={<Server />} label="Cloud Resources" />
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2 px-3">
-            Operations
-          </div>
-          <div className="space-y-1">
-            <NavItem href="/monitoring" icon={<Activity />} label="Monitoring" />
-            <NavItem href="/devsecops" icon={<Terminal />} label="DevSecOps" />
+            <NavItem href="/monitoring" icon={<Activity />} label="System Health" />
           </div>
         </div>
 

@@ -1,213 +1,708 @@
 "use client";
 
-import { API_URL, WS_URL } from "@/lib/api";
+import { useEffect, useState, useRef } from "react";
+import { API_URL } from "@/lib/api";
+import {
+  Shield,
+  Activity,
+  AlertTriangle,
+  Play,
+  Pause,
+  ArrowRight,
+  Download,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  Layers,
+  Radio,
+  Cpu,
+  RefreshCw,
+  Search,
+  Lock,
+  Globe
+} from "lucide-react";
 
-import { useEffect, useState } from "react";
-import { DataTable } from "@/components/ui/DataTable";
-import { Play, GitBranch, GitCommit, User, GitMerge } from "lucide-react";
+interface PipelineStage {
+  title: string;
+  detail: string;
+  agent: string;
+}
 
-interface PipelineRunData {
-  id: string;
-  time: string;
-  commit_sha: string;
-  branch: string;
-  developer: string;
-  status: string;
-  sast_status: string;
-  secret_status: string;
-  dependency_status: string;
-  container_status: string;
+interface ToolItem {
+  stage: number;
+  title: string;
+  detail: string;
+}
+
+interface AuditState {
+  status: "idle" | "queued" | "running" | "complete" | "stopped" | "failed";
+  completed: number;
+  total_stages: number;
+  active: string;
+  stage_index: number;
+  mode: "guided" | "all";
+  target: string;
+  provider: string;
+  events: { time: string; label: string; status: string }[];
+  report: string;
+  reports: Record<string, string>;
+  counts: { Critical: number; High: number; Medium: number; Low: number };
+  error: string | null;
+  started: string | null;
+  pipeline: PipelineStage[];
+  tools: ToolItem[];
 }
 
 export default function DevSecOpsPage() {
-  const [runs, setRuns] = useState<PipelineRunData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [triggering, setTriggering] = useState(false);
+  const [audit, setAudit] = useState<AuditState | null>(null);
+  const [target, setTarget] = useState("");
+  const [authorized, setAuthorized] = useState(false);
+  const [mode, setMode] = useState<"guided" | "all">("guided");
+  const [provider, setProvider] = useState("gemini");
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("Overview");
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchRuns = () => {
-    fetch(`${API_URL}/api/devsecops/runs`)
-      .then((res) => res.json())
-      .then((json) => {
-        setRuns(json.runs || []);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Failed to fetch devsecops runs:", error);
-        setLoading(false);
-      });
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/devsecops/audit/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setAudit(data);
+        if (data.target && !target) {
+          setTarget(data.target);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch audit status:", err);
+    }
   };
 
   useEffect(() => {
-    fetchRuns();
-
-    // Listen to real-time CI/CD pipeline scans via WebSocket
-    try {
-      const ws = new WebSocket(WS_URL);
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "NEW_PIPELINE_RUN") {
-            setRuns((prev) => [data.run, ...prev]);
-          }
-        } catch {
-          // Ignore
-        }
-      };
-      return () => ws.close();
-    } catch {
-      // Ignore
-    }
+    fetchStatus();
+    pollIntervalRef.current = setInterval(fetchStatus, 2000);
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
   }, []);
 
+  const handleLaunch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!target.trim()) {
+      alert("Please enter a valid target URL or domain.");
+      return;
+    }
+    if (!authorized) {
+      alert("You must verify authorization to test this target.");
+      return;
+    }
 
-  const triggerWebhook = () => {
-    setTriggering(true);
-    fetch(`${API_URL}/api/devsecops/webhook`, { method: "POST" })
-      .then(() => {
-        fetchRuns();
-        setTriggering(false);
-      })
-      .catch((error) => {
-        console.error("Failed to trigger webhook:", error);
-        setTriggering(false);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/devsecops/audit/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: target.trim(),
+          authorized,
+          mode,
+          provider,
+        }),
       });
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "PASSED":
-        return <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded">PASSED</span>;
-      case "PASSED WITH WARNINGS":
-        return <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-1 rounded">WARNINGS</span>;
-      case "FAILED":
-        return <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded">FAILED</span>;
-      default:
-        return <span className="bg-gray-100 text-gray-700 text-xs font-semibold px-2 py-1 rounded">{status}</span>;
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.detail || "Failed to start audit");
+      } else {
+        setAudit(data);
+      }
+    } catch (err) {
+      console.error("Audit start error:", err);
+      alert("Failed to communicate with backend server.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStepIcon = (status: string) => {
-    if (status === "PASSED") return <span className="text-green-500">✓</span>;
-    if (status === "WARNING") return <span className="text-yellow-500">⚠</span>;
-    if (status === "FAILED") return <span className="text-red-500">✗</span>;
-    return <span className="text-gray-400">-</span>;
+  const handleNextStage = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/devsecops/audit/next`, { method: "POST" });
+      const data = await res.json();
+      setAudit(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-muted">Loading DevSecOps pipeline runs...</div>;
-  }
+  const handleRunAll = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/devsecops/audit/run-all`, { method: "POST" });
+      const data = await res.json();
+      setAudit(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
-  const latestRun = runs.length > 0 ? runs[0] : null;
+  const handleStop = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/devsecops/audit/stop`, { method: "POST" });
+      const data = await res.json();
+      setAudit(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const downloadReport = () => {
+    if (!audit?.report) return;
+    const blob = new Blob([audit.report], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `security-audit-${audit.target.replace(/[^a-zA-Z0-9]/g, "_") || "report"}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Structured Markdown Sections Parser
+  const parseReportSections = (text: string) => {
+    if (!text) return [];
+    const cleaned = text.replace(/^```(?:markdown|md|text)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const parts = cleaned.split(/(?=^##\s+)/m).filter(Boolean);
+    if (parts.length <= 1) {
+      return [{ title: "Overview", content: cleaned }];
+    }
+    return parts.map((part) => {
+      const match = part.match(/^##\s+(.+?)$/m);
+      const title = match ? match[1].replace(/[*_~`]/g, "").trim().slice(0, 36) : "Section";
+      const content = part.replace(/^##\s+.+?$/m, "").trim();
+      return { title, content };
+    });
+  };
+
+  const reportSections = audit?.report ? parseReportSections(audit.report) : [];
+  const maxRiskCount = audit?.counts ? Math.max(...Object.values(audit.counts), 1) : 1;
+  const isRunning = audit?.status === "running" || audit?.status === "queued";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-8 max-w-7xl mx-auto pb-16">
+      {/* Hero Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-border/40 pb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">DevSecOps Center</h1>
-          <p className="text-xs text-muted mt-1">Real-time Git push CI/CD monitoring, SAST security audit & automated gates</p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Live Webhook Listener Active</span>
+          <div className="flex items-center gap-2 text-xs font-mono text-cyan-600 dark:text-cyan-400 tracking-wider uppercase mb-1">
+            <Shield className="w-4 h-4 text-cyan-500" />
+            <span>DevSecOps AI Security Audit Tool // Multi-Agent Engine</span>
           </div>
-          <button 
-            onClick={triggerWebhook}
-            disabled={triggering}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-xs cursor-pointer"
-          >
-            <Play className="w-3.5 h-3.5" /> 
-            {triggering ? "Scanning Code..." : "Test Push Webhook"}
-          </button>
-        </div>
-      </div>
-
-      {/* GitHub Webhook Info Banner */}
-      <div className="p-4 rounded-lg bg-surface border border-border flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
-        <div className="space-y-1">
-          <div className="font-semibold text-foreground flex items-center gap-1.5">
-            <GitBranch className="w-4 h-4 text-primary" />
-            <span>Connect Live GitHub Repository Webhook</span>
-          </div>
-          <p className="text-muted">
-            Receive instant security audit scans whenever you or team members push commits to GitHub:
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
+            See the attack surface before attackers do.
+          </h1>
+          <p className="text-sm text-muted mt-1 max-w-2xl leading-relaxed">
+            A calm, evidence-first interface for turning any target into a prioritized, actionable security brief.
+            Execute the 8-stage CrewAI pipeline or run step-by-step guided assessments.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-md font-mono text-[11px] text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700">
-          <span>{API_URL}/api/devsecops/webhook</span>
+
+        {/* Live Status indicator */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border/80 bg-surface text-xs font-medium shadow-xs">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isRunning
+                  ? "bg-amber-500 animate-ping"
+                  : audit?.status === "complete"
+                  ? "bg-emerald-500"
+                  : "bg-muted"
+              }`}
+            />
+            <span className="font-mono uppercase font-semibold text-foreground">
+              {audit?.status || "IDLE"}
+            </span>
+            {audit?.status === "running" && (
+              <span className="text-muted border-l border-border/60 pl-2">
+                Stage {audit.completed + 1} of {audit.total_stages}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-
-      {latestRun && (
-        <div className="bg-surface border-sentinel rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <GitMerge className="w-5 h-5" /> Latest Pipeline Execution
+      {/* Main Grid: Control Form & Configuration */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Form: Target Setup */}
+        <div className="lg:col-span-2 bg-surface border border-border rounded-xl p-6 shadow-xs space-y-5">
+          <div className="flex items-center justify-between border-b border-border/40 pb-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+              <Globe className="w-4 h-4 text-primary" /> Audit Target Configuration
             </h2>
-            {getStatusBadge(latestRun.status)}
-          </div>
-          
-          <div className="flex gap-4 mb-8 text-sm text-muted">
-            <span className="flex items-center gap-1"><GitCommit className="w-4 h-4"/> {latestRun.commit_sha}</span>
-            <span className="flex items-center gap-1"><GitBranch className="w-4 h-4"/> {latestRun.branch}</span>
-            <span className="flex items-center gap-1"><User className="w-4 h-4"/> {latestRun.developer}</span>
+            <span className="text-xs text-muted font-mono">OWASP & CVE Intelligence</span>
           </div>
 
-          <div className="flex justify-between items-center w-full max-w-4xl mx-auto text-sm">
-            <PipelineStep name="Build" status="PASSED" icon={getStepIcon("PASSED")} />
-            <PipelineDivider />
-            <PipelineStep name="SAST" status={latestRun.sast_status} icon={getStepIcon(latestRun.sast_status)} />
-            <PipelineDivider />
-            <PipelineStep name="Secrets" status={latestRun.secret_status} icon={getStepIcon(latestRun.secret_status)} />
-            <PipelineDivider />
-            <PipelineStep name="Deps" status={latestRun.dependency_status} icon={getStepIcon(latestRun.dependency_status)} />
-            <PipelineDivider />
-            <PipelineStep name="Container" status={latestRun.container_status} icon={getStepIcon(latestRun.container_status)} />
-            <PipelineDivider />
-            <PipelineStep name="Deploy" status={latestRun.status === "FAILED" ? "SKIPPED" : "PASSED"} icon={latestRun.status === "FAILED" ? getStepIcon("SKIPPED") : getStepIcon("PASSED")} />
+          <form onSubmit={handleLaunch} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-foreground/80 uppercase tracking-wider mb-1.5">
+                Target Domain, IP, or URL
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  placeholder="https://app.example.com or 192.168.1.1"
+                  className="w-full bg-background border border-border rounded-lg px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  disabled={isRunning}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-foreground/80 uppercase tracking-wider mb-1.5">
+                  AI Provider
+                </label>
+                <select
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  disabled={isRunning}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="gemini">Google Gemini (gemini-3.8-flash)</option>
+                  <option value="grok">xAI Grok (grok-3-mini)</option>
+                  <option value="openai">OpenAI (gpt-4o-mini)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-foreground/80 uppercase tracking-wider mb-1.5">
+                  Assessment Mode
+                </label>
+                <div className="flex gap-4 pt-1">
+                  <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                    <input
+                      type="radio"
+                      name="mode"
+                      value="guided"
+                      checked={mode === "guided"}
+                      onChange={() => setMode("guided")}
+                      disabled={isRunning}
+                      className="accent-primary"
+                    />
+                    One-by-one Guided
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+                    <input
+                      type="radio"
+                      name="mode"
+                      value="all"
+                      checked={mode === "all"}
+                      onChange={() => setMode("all")}
+                      disabled={isRunning}
+                      className="accent-primary"
+                    />
+                    Run All Stages
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <label className="flex items-start gap-2.5 text-xs text-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={authorized}
+                  onChange={(e) => setAuthorized(e.target.checked)}
+                  disabled={isRunning}
+                  className="mt-0.5 accent-primary"
+                  required
+                />
+                <span>
+                  I have explicit authorization to test this target. Active probes may generate network traffic and simulate intrusion vectors.
+                </span>
+              </label>
+            </div>
+
+            <div className="pt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={loading || isRunning || !target.trim()}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-white font-semibold text-sm rounded-lg hover:bg-primary/90 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {loading || isRunning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Executing Audit...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Launch Assessment</span>
+                  </>
+                )}
+              </button>
+
+              {audit && audit.status !== "idle" && (
+                <button
+                  type="button"
+                  onClick={fetchStatus}
+                  className="p-2.5 text-muted hover:text-foreground border border-border rounded-lg bg-surface transition-colors"
+                  title="Refresh Status"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+
+        {/* Right Info: Live Pulse Metrics */}
+        <div className="bg-surface border border-border rounded-xl p-6 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="text-xs font-mono uppercase tracking-wider text-muted mb-2">
+              Assessment Pulse
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="p-3 rounded-lg border border-border bg-background">
+                <div className="text-[11px] font-mono text-muted uppercase">Status</div>
+                <div className="text-lg font-bold text-foreground capitalize mt-0.5">
+                  {audit?.status || "Idle"}
+                </div>
+                <div className="text-[10px] text-muted truncate mt-0.5">{audit?.active || "Ready"}</div>
+              </div>
+
+              <div className="p-3 rounded-lg border border-border bg-background">
+                <div className="text-[11px] font-mono text-muted uppercase">Completed</div>
+                <div className="text-lg font-bold text-foreground mt-0.5">
+                  {audit?.completed || 0} / {audit?.total_stages || 8}
+                </div>
+                <div className="text-[10px] text-muted mt-0.5">Pipeline Stages</div>
+              </div>
+
+              <div className="p-3 rounded-lg border border-border bg-background">
+                <div className="text-[11px] font-mono text-muted uppercase">Critical / High</div>
+                <div className="text-lg font-bold text-red-500 mt-0.5">
+                  {(audit?.counts?.Critical || 0) + (audit?.counts?.High || 0)}
+                </div>
+                <div className="text-[10px] text-muted mt-0.5">High Priority Items</div>
+              </div>
+
+              <div className="p-3 rounded-lg border border-border bg-background">
+                <div className="text-[11px] font-mono text-muted uppercase">Last Run</div>
+                <div className="text-xs font-mono font-medium text-foreground mt-1 truncate">
+                  {audit?.started || "--:--"}
+                </div>
+                <div className="text-[10px] text-muted mt-0.5">Session Timestamp</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-border/50 pt-3 text-[11px] text-muted">
+            <span className="font-semibold text-foreground">Multi-Agent Roster:</span> DNS Recon, Port Inspector, Header Analyzer, TLS/SSL, Injection Tester, Auth Auditor & Report Synthesizer.
+          </div>
+        </div>
+      </div>
+
+      {/* Live Session Progress Bar & Pipeline Steps */}
+      {audit && audit.status !== "idle" && (
+        <div className="bg-surface border border-border rounded-xl p-6 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-500" />
+                Live Assessment Execution Pipeline
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Active Target: <span className="font-mono text-foreground font-semibold">{audit.target}</span>
+              </p>
+            </div>
+
+            {/* Guided Controls */}
+            {(audit.status === "stopped" || (audit.status === "complete" && audit.mode === "guided")) && (
+              <div className="flex items-center gap-2">
+                {audit.completed < audit.total_stages ? (
+                  <>
+                    <button
+                      onClick={handleNextStage}
+                      disabled={actionLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors cursor-pointer"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" /> Next Stage ({audit.completed + 1})
+                    </button>
+                    <button
+                      onClick={handleRunAll}
+                      disabled={actionLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5" /> Run All Remaining
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    <CheckCircle2 className="w-4 h-4" /> All Stages Complete
+                  </div>
+                )}
+                {isRunning && (
+                  <button
+                    onClick={handleStop}
+                    disabled={actionLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Pause className="w-3.5 h-3.5" /> Pause
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Progress Bar */}
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs font-mono text-muted">
+              <span>{audit.active}</span>
+              <span>{Math.round((audit.completed / (audit.total_stages || 8)) * 100)}%</span>
+            </div>
+            <div className="w-full bg-border/60 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-primary h-full transition-all duration-500 rounded-full"
+                style={{ width: `${(audit.completed / (audit.total_stages || 8)) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Pipeline Step Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-2">
+            {audit.pipeline?.map((item, idx) => {
+              const isDone = idx < audit.completed;
+              const isCurrent = idx === audit.completed && isRunning;
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg border text-center transition-all ${
+                    isDone
+                      ? "border-emerald-300 dark:border-emerald-800 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : isCurrent
+                      ? "border-amber-400 bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-2 ring-amber-400/30"
+                      : "border-border bg-background text-muted"
+                  }`}
+                >
+                  <div className="text-[10px] font-mono uppercase mb-1">Stage {idx + 1}</div>
+                  <div className="font-semibold text-xs truncate" title={item.title}>
+                    {item.title}
+                  </div>
+                  <div className="mt-1.5 flex justify-center">
+                    {isDone ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    ) : isCurrent ? (
+                      <RefreshCw className="w-4 h-4 text-amber-500 animate-spin" />
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-border mt-1" />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Tools & Events Live Activity */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div className="border border-border/80 rounded-lg p-4 bg-background/50">
+              <div className="text-xs font-mono uppercase text-muted mb-2">Live Agent Activities</div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-2">
+                {audit.events && audit.events.length > 0 ? (
+                  audit.events.map((evt, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-border/40 font-mono">
+                      <span className="text-foreground">{evt.label}</span>
+                      <span className="text-muted text-[11px]">{evt.time}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-xs text-muted py-2">Waiting for first agent event...</div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-border/80 rounded-lg p-4 bg-background/50">
+              <div className="text-xs font-mono uppercase text-muted mb-2">Security Tool Instrumentation</div>
+              <div className="grid grid-cols-2 gap-2 text-xs max-h-48 overflow-y-auto pr-1">
+                {audit.tools?.map((tool, idx) => {
+                  const done = tool.stage < audit.completed;
+                  const active = tool.stage === audit.completed && isRunning;
+                  return (
+                    <div key={idx} className="p-2 border border-border/50 rounded bg-surface/50">
+                      <div className="font-semibold text-[11px] text-foreground truncate">{tool.title}</div>
+                      <div className="text-[10px] text-muted truncate">{tool.detail}</div>
+                      <span
+                        className={`text-[9px] font-mono uppercase mt-1 inline-block ${
+                          done ? "text-emerald-500" : active ? "text-amber-500 animate-pulse" : "text-muted"
+                        }`}
+                      >
+                        {done ? "Complete" : active ? "Running" : "Queued"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="bg-surface border-sentinel rounded-lg shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Pipeline History</h3>
+      {/* Findings Desk & Risk Breakdown */}
+      {audit?.report ? (
+        <div className="space-y-6">
+          {/* Severity Strip & Download Bar */}
+          <div className="bg-surface border border-border rounded-xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/40 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">Findings Desk & Risk Distribution</h2>
+                <p className="text-xs text-muted mt-0.5">Automated triage categorized by CVSS and OWASP standards</p>
+              </div>
+
+              <button
+                onClick={downloadReport}
+                className="flex items-center gap-2 px-4 py-2 bg-foreground text-background font-semibold text-xs rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" /> Download Executive Report (.md)
+              </button>
+            </div>
+
+            {/* Severity Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/10">
+                <span className="text-xs font-mono font-bold text-red-500 uppercase">Critical</span>
+                <div className="text-2xl font-extrabold text-red-600 dark:text-red-400 mt-1">
+                  {audit.counts?.Critical || 0}
+                </div>
+                <div className="text-[11px] text-muted mt-0.5">Immediate exploit risk</div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/10">
+                <span className="text-xs font-mono font-bold text-amber-500 uppercase">High</span>
+                <div className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">
+                  {audit.counts?.High || 0}
+                </div>
+                <div className="text-[11px] text-muted mt-0.5">Priority remediation</div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10">
+                <span className="text-xs font-mono font-bold text-cyan-500 uppercase">Medium</span>
+                <div className="text-2xl font-extrabold text-cyan-600 dark:text-cyan-400 mt-1">
+                  {audit.counts?.Medium || 0}
+                </div>
+                <div className="text-[11px] text-muted mt-0.5">Configuration defects</div>
+              </div>
+
+              <div className="p-4 rounded-xl border border-slate-500/20 bg-slate-500/10">
+                <span className="text-xs font-mono font-bold text-slate-500 uppercase">Low</span>
+                <div className="text-2xl font-extrabold text-slate-600 dark:text-slate-400 mt-1">
+                  {audit.counts?.Low || 0}
+                </div>
+                <div className="text-[11px] text-muted mt-0.5">Best practice & info</div>
+              </div>
+            </div>
+
+            {/* Risk Graph Track */}
+            <div className="p-4 border border-border rounded-lg bg-background space-y-3">
+              <div className="text-xs font-mono uppercase text-muted">Risk Profile Graph</div>
+              <div className="space-y-2.5">
+                {[
+                  { label: "Critical", count: audit.counts?.Critical || 0, color: "bg-red-500" },
+                  { label: "High", count: audit.counts?.High || 0, color: "bg-amber-500" },
+                  { label: "Medium", count: audit.counts?.Medium || 0, color: "bg-cyan-500" },
+                  { label: "Low", count: audit.counts?.Low || 0, color: "bg-slate-400" },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center gap-3 text-xs font-mono">
+                    <span className="w-16 font-semibold text-foreground">{item.label}</span>
+                    <div className="flex-1 bg-border/40 h-2.5 rounded-full overflow-hidden">
+                      <div
+                        className={`${item.color} h-full rounded-full transition-all duration-500`}
+                        style={{ width: `${(item.count / maxRiskCount) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-8 text-right font-bold text-foreground">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Structured Report Tabs */}
+          <div className="bg-surface border border-border rounded-xl p-6 shadow-xs space-y-6">
+            <div className="border-b border-border/60 pb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                <Layers className="w-4 h-4 text-primary" /> Structured Executive Findings
+              </h3>
+              <span className="text-xs text-muted font-mono">Interactive Tabs</span>
+            </div>
+
+            {/* Tabs Header */}
+            <div className="flex flex-wrap gap-2 border-b border-border/40 pb-2">
+              {reportSections.map((sec, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveTab(sec.title)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    activeTab === sec.title || (activeTab === "Overview" && idx === 0)
+                      ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30"
+                      : "text-muted hover:text-foreground hover:bg-surface"
+                  }`}
+                >
+                  {sec.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Body */}
+            <div className="p-4 rounded-lg bg-background border border-border/80 text-foreground leading-relaxed text-sm whitespace-pre-wrap font-sans max-h-[600px] overflow-y-auto">
+              {reportSections.find((s) => s.title === activeTab)?.content ||
+                reportSections[0]?.content ||
+                audit.report}
+            </div>
+
+            {/* Guided Individual Stage Reports if Available */}
+            {audit.reports && Object.keys(audit.reports).length > 0 && (
+              <div className="pt-4 border-t border-border/40 space-y-3">
+                <div className="text-xs font-mono uppercase text-muted">
+                  Completed Stage Logs ({Object.keys(audit.reports).length} stages)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(audit.reports).map(([stageName, stageContent], idx) => (
+                    <details key={idx} className="border border-border rounded-lg p-3 bg-background group">
+                      <summary className="text-xs font-semibold text-foreground cursor-pointer flex items-center justify-between">
+                        <span>{stageName}</span>
+                        <span className="text-primary text-[11px] group-open:rotate-90 transition-transform">
+                          ▶
+                        </span>
+                      </summary>
+                      <div className="mt-2 text-xs text-muted font-mono bg-surface p-2.5 rounded border border-border/60 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                        {stageContent}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        
-        <DataTable
-          data={runs}
-          keyExtractor={(row) => row.id}
-          columns={[
-            { header: "Run ID", accessor: (row) => <span className="font-mono text-xs">{row.id}</span> },
-            { header: "Branch", accessor: (row) => <span className="flex items-center gap-1 font-medium"><GitBranch className="w-3 h-3"/> {row.branch}</span> },
-            { header: "Commit", accessor: (row) => <span className="font-mono text-xs text-muted">{row.commit_sha}</span> },
-            { header: "Developer", accessor: (row) => <span>{row.developer}</span> },
-            { header: "Status", accessor: (row) => getStatusBadge(row.status) },
-            { header: "Time", accessor: (row) => <span className="text-muted">{new Date(row.time).toLocaleString()}</span> },
-          ]}
-        />
-      </div>
+      ) : (
+        <div className="bg-surface border border-dashed border-border rounded-xl p-10 text-center space-y-3">
+          <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">No Assessment Active</h3>
+          <p className="text-xs text-muted max-w-md mx-auto">
+            Enter an authorized domain, URL, or IP address in the configuration panel above to kick off the multi-agent AI security audit.
+          </p>
+        </div>
+      )}
     </div>
-  );
-}
-
-function PipelineStep({ name, status, icon }: { name: string, status: string, icon: React.ReactNode }) {
-  let colorClass = "border-gray-200 text-gray-500";
-  if (status === "PASSED") colorClass = "border-green-200 text-green-700 bg-green-50";
-  if (status === "WARNING") colorClass = "border-yellow-200 text-yellow-700 bg-yellow-50";
-  if (status === "FAILED") colorClass = "border-red-200 text-red-700 bg-red-50";
-
-  return (
-    <div className={`flex flex-col items-center justify-center p-3 rounded-lg border ${colorClass} w-24 text-center`}>
-      <div className="mb-1 text-lg">{icon}</div>
-      <div className="font-medium text-xs">{name}</div>
-    </div>
-  );
-}
-
-function PipelineDivider() {
-  return (
-    <div className="flex-1 h-px bg-gray-300 mx-2"></div>
   );
 }

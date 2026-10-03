@@ -717,3 +717,49 @@ async def trigger_pipeline_webhook(request: Request):
         "sast_details": result["sast_details"]
     }
 
+
+# ==============================================================================
+# DEVSECOPS CREWAI AUDIT TOOL ENDPOINTS
+# ==============================================================================
+from app.devsecops.service import (
+    start_audit_run,
+    next_guided_stage,
+    run_all_remaining,
+    stop_audit,
+    get_audit_status,
+    target_is_valid,
+)
+
+class AuditLaunchRequest(BaseModel):
+    target: str
+    authorized: bool = False
+    mode: str = "guided"
+    provider: str = "gemini"
+
+@app.get("/api/devsecops/audit/status")
+async def devsecops_audit_status():
+    return get_audit_status()
+
+@app.post("/api/devsecops/audit/start")
+async def devsecops_audit_start(req: AuditLaunchRequest):
+    clean_target = req.target.strip()
+    if not target_is_valid(clean_target):
+        raise HTTPException(status_code=400, detail="Enter a valid domain, IP address, or URL.")
+    if not req.authorized:
+        raise HTTPException(status_code=400, detail="Confirm that you are authorized to test this target before launching.")
+    
+    status = start_audit_run(target=clean_target, mode=req.mode, provider=req.provider)
+    return status
+
+@app.post("/api/devsecops/audit/next")
+async def devsecops_audit_next():
+    return next_guided_stage()
+
+@app.post("/api/devsecops/audit/run-all")
+async def devsecops_audit_run_all():
+    return run_all_remaining()
+
+@app.post("/api/devsecops/audit/stop")
+async def devsecops_audit_stop():
+    return stop_audit()
+

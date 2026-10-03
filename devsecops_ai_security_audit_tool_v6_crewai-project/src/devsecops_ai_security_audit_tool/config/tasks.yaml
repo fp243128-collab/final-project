@@ -1,0 +1,263 @@
+---
+dns_and_network_reconnaissance:
+  description: |-
+    Perform full reconnaissance on the target: {target}
+
+    1. Run DNS and IP Reconnaissance Tool on the target to gather:
+       - All DNS records (A, MX, TXT, NS, CNAME)
+       - IP geolocation and ASN information
+       - SPF and DMARC email security analysis
+       - Subdomain takeover indicators
+
+    2. Run Shodan Port and Service Lookup on the target to gather:
+       - All open ports and their mapped services
+       - Detected software and CPEs
+       - Known CVEs associated with the IP
+       - High-risk port flags and severity ratings
+
+    Compile all findings into a structured recon report.
+  expected_output: |-
+    A detailed reconnaissance report in markdown format containing:
+    - DNS records table (A, MX, TXT, NS, CNAME)
+    - IP geolocation and ASN details
+    - SPF/DMARC security status with severity
+    - Open ports with service names and risk ratings
+    - Detected CVEs with NVD links
+    - Subdomain takeover warnings if any
+    - Summary of critical findings from recon phase
+  agent: target_reconnaissance_agent
+web_application_security_inspection:
+  description: |-
+    Perform a web application security inspection on {target}. You MUST run all 4 tools below IN ORDER and report results from EACH one. Do not skip any tool.
+
+    **STEP 1 — Run HTTP Security Headers Inspector** on {target}
+    Report: which headers are present/missing, their values, and severity rating for each.
+
+    **STEP 2 — Run Cookie Security Analyzer** on {target}
+    Report: all cookies found, their flags (HttpOnly/Secure/SameSite), risk scores, and JWT detection.
+
+    **STEP 3 — Run SSL TLS Certificate Inspector** on {target} (domain only, no https://)
+    Report: SSL/TLS status, certificate expiry, wildcard detection, and security headers found.
+
+    **STEP 4 — Run ScrapeWebsiteTool** on {target}
+    Report: page title, visible content, technology stack clues, form fields, links found, and any sensitive information disclosed.
+
+    After completing ALL 4 steps, compile a single report with all findings.
+  expected_output: "A web application security report in markdown with 4 clearly labeled
+    sections:\n## Step 1: HTTP Security Headers Results\n- Table of all headers checked
+    (present/missing/value/severity)\n\n## Step 2: Cookie Security Results  \n- Per-cookie
+    analysis with risk scores (or \"No cookies found\")\n\n## Step 3: SSL/TLS Certificate
+    Results\n- SSL status, cert expiry, wildcard detection, security headers\n\n##
+    Step 4: Web Scraping Results\n- Tech stack, page content, forms found, endpoints,
+    sensitive info\n\n## Summary\n- Total findings by severity (Critical/High/Medium/Low)\n-
+    OWASP Top 10 mapping"
+  agent: web_application_security_inspector
+  context:
+  - dns_and_network_reconnaissance
+deep_endpoint_discovery_and_metadata_extraction:
+  description: |-
+    Perform deep endpoint discovery and metadata extraction on {target}. Execute:
+    1. Probe all 55+ common sensitive paths: /admin, /.env, /api, /graphql, /.git/config, /backup.zip, /phpinfo.php, /actuator/env, etc.
+    2. Flag any EXPOSED (200) sensitive files as HIGH RISK
+    3. Extract all page metadata: HTML meta tags, Open Graph, title, generator tags
+    4. Fingerprint technology stack with version numbers from script sources
+    5. Scan page source for sensitive data: emails, AWS keys, JWT tokens, private keys, API keys, HTML comments, internal IPs
+    6. Map all external domains, mailto links, tel links referenced
+    7. Report all JavaScript files found that may contain secrets
+  expected_output: |-
+    Deep discovery and metadata report in markdown containing:
+    - Full endpoint probe results table (URL, status, risk level)
+    - HIGH RISK exposed files section
+    - Complete metadata extraction (meta tags, title, generator)
+    - Technology fingerprint with detected versions
+    - Sensitive data findings (emails, keys, tokens found)
+    - External domains and link disclosure map
+    - JavaScript files inventory
+  agent: deep_endpoint_discovery_and_metadata_analyst
+  async_execution: true
+  context:
+  - dns_and_network_reconnaissance
+dos_resilience_and_http_attack_testing:
+  description: |-
+    Test {target} for DoS resilience, rate limiting, and HTTP attack vectors. Execute:
+    1. Rate limiting detection — send 20 sequential requests, detect 429 responses and rate limit headers
+    2. Response time analysis — measure min/max/avg, detect server degradation under load
+    3. Large payload test — POST 10KB body, GET with 1000-char parameter
+    4. HTTP method enumeration — test OPTIONS, PUT, DELETE, PATCH, TRACE — flag dangerous allowed methods
+    5. Header injection — oversized header test, Host header injection test
+    6. Compression and CDN detection — check gzip/brotli, cache headers, WAF/CDN presence
+    Report all findings with current protection status and hardening recommendations.
+  expected_output: |-
+    DoS resilience and HTTP attack report in markdown containing:
+    - Rate limiting status (present/absent, trigger point)
+    - Response time analysis (min/max/avg, degradation detected)
+    - Large payload handling results
+    - Dangerous HTTP methods allowed
+    - Header injection vulnerability findings
+    - CDN/WAF/compression detection
+    - Prioritized hardening recommendations
+  agent: dos_resilience_and_http_attack_tester
+  async_execution: true
+  context:
+  - dns_and_network_reconnaissance
+sql_injection_and_input_vulnerability_testing:
+  description: |-
+    Perform comprehensive injection vulnerability testing on {target}. Use all available tools to:
+    1. Discover all forms, input fields, and URL query parameters
+    2. Test each input with SQL injection payloads (error-based, boolean blind, time-based indicators)
+    3. Test for Reflected XSS across all inputs
+    4. Test for open redirect vulnerabilities in redirect parameters
+    5. Analyze and report each vulnerable endpoint with: payload used, response indicator, vulnerability type, and severity rating
+    6. Provide step-by-step remediation for each finding
+  expected_output: |-
+    A detailed injection vulnerability report in markdown containing:
+    - All discovered input points (forms, parameters)
+    - SQL injection findings with payloads and evidence (Critical/High/Medium/Low)
+    - XSS findings with reflected payload evidence
+    - Open redirect findings
+    - Remediation steps for each vulnerability
+    - Summary count by severity
+  agent: sql_injection_and_input_vulnerability_tester
+  async_execution: true
+  context:
+  - dns_and_network_reconnaissance
+  - web_application_security_inspection
+authentication_and_session_security_testing:
+  description: |-
+    Perform full authentication security testing on {target}. Test:
+    1. Login form security — HTTPS enforcement, CSRF tokens, autocomplete on password fields
+    2. Default credential testing — admin/admin, root/root, and other common pairs
+    3. Account enumeration — compare responses for valid vs invalid usernames
+    4. Rate limiting — send rapid requests and check for lockout or 429 responses
+    5. Password policy — check for weak password acceptance
+    6. Security headers specific to auth pages — Cache-Control: no-store, Pragma
+    7. Session cookie security flags after login attempt
+    Report all findings with severity and exact remediation steps.
+  expected_output: |-
+    Authentication security report in markdown containing:
+    - Login form analysis (HTTPS, CSRF, autocomplete)
+    - Default credential test results
+    - Account enumeration findings
+    - Rate limiting status
+    - Password policy weaknesses
+    - Auth-specific header findings
+    - Severity-rated findings with remediation steps
+  agent: authentication_and_session_security_tester
+  async_execution: true
+  context:
+  - web_application_security_inspection
+vulnerability_analysis_and_cve_research:
+  description: |-
+    Analyze findings from DNS/Network Reconnaissance and Web Application Security Inspection for {target}.
+
+    You MUST complete ALL steps below in order:
+
+    **STEP 1 — Technology CVE Research** (max 3 searches total)
+    - Search for CVEs for the TOP 3 most critical technologies identified (e.g. "Next.js CVE 2025 2026", "Railway hosting security vulnerabilities")
+    - Use ExaSearchTool for each search
+    - Record CVE IDs, CVSS scores, and affected versions found
+
+    **STEP 2 — OWASP Top 10 Mapping**
+    Map EVERY finding from context to one of these categories (do this from memory + context, NO additional searches needed):
+    - A01: Broken Access Control, A02: Cryptographic Failures, A03: Injection, A04: Insecure Design, A05: Security Misconfiguration, A06: Vulnerable Components, A07: Auth Failures, A08: Data Integrity Failures, A09: Logging Failures, A10: SSRF
+
+    **STEP 3 — CVSS Scoring**
+    Assign CVSS v3 scores (0-10) to each finding. Use standard scoring WITHOUT additional searches.
+
+    **STEP 4 — Attack Chain Scenarios**
+    Write 3 realistic attack chains based ONLY on findings already in context. NO searches needed for this step.
+
+    **STEP 5 — Compile Report**
+    Write the final vulnerability analysis report combining all steps above.
+  expected_output: |-
+    Vulnerability analysis report in markdown with these sections:
+    ## CVE Research Results (from Step 1 searches)
+    - Technology, CVE ID, CVSS, description, affected versions
+
+    ## OWASP Top 10 Mapping
+    - Each finding mapped to OWASP category with severity
+
+    ## Vulnerability List (sorted Critical → Low)
+    - ID, Name, CVSS, OWASP, Description, Impact, CVE refs
+
+    ## Attack Chain Scenarios (3 chains)
+    - Chain name, steps, relevant findings, mitigations
+
+    ## Risk Matrix
+    - Likelihood vs Impact table
+
+    ## Top 5 Critical Issues
+    - Priority ordered with immediate actions
+  agent: vulnerability_analyst
+  context:
+  - dns_and_network_reconnaissance
+  - web_application_security_inspection
+  - sql_injection_and_input_vulnerability_testing
+  - authentication_and_session_security_testing
+  - deep_endpoint_discovery_and_metadata_extraction
+  - dos_resilience_and_http_attack_testing
+generate_full_security_audit_report:
+  description: |-
+    Compile all findings from the reconnaissance, web inspection, and vulnerability analysis phases into a single, comprehensive, professional security audit report for {target}.
+
+    Structure the report as follows:
+
+    ## 1. Executive Summary
+    - Target info, audit scope, and date
+    - Overall risk rating (Critical/High/Medium/Low)
+    - Top 3 most critical findings in plain language
+    - Recommended immediate actions
+
+    ## 2. Risk Dashboard
+    - Summary table: Total findings by severity (Critical/High/Medium/Low/Info)
+    - OWASP Top 10 coverage table
+    - Overall security score (0-100)
+
+    ## 3. Network & Infrastructure Findings
+    - DNS configuration issues
+    - Open ports and exposed services
+    - CVEs linked to detected services
+    - IP/ASN/geolocation details
+
+    ## 4. Web Application Findings
+    - HTTP security headers audit
+    - Cookie security issues
+    - SSL/TLS findings
+    - Metadata and information disclosure
+
+    ## 5. Vulnerability Details (sorted by severity)
+    For each vulnerability:
+    - ID, Name, Severity, CVSS Score
+    - OWASP Category
+    - Description & Evidence
+    - Business Impact
+    - Step-by-step Remediation Instructions
+    - References (CVE links, OWASP links)
+
+    ## 6. Attack Chain Scenarios
+    - Realistic attack paths based on findings
+
+    ## 7. Remediation Roadmap
+    - Priority 1 (Fix immediately - Critical)
+    - Priority 2 (Fix within 1 week - High)
+    - Priority 3 (Fix within 1 month - Medium)
+    - Priority 4 (Fix within 3 months - Low)
+
+    ## 8. Conclusion & Next Steps
+  expected_output: |-
+    A complete, professional security audit report in markdown format — ready to be handed to both development teams and executives. Must include:
+    - Executive summary with overall risk rating
+    - Risk dashboard with severity counts and security score
+    - All findings categorized, described, and remediated
+    - Attack chain scenarios
+    - Prioritized remediation roadmap with timelines
+    - Formatted consistently with clear headings, tables, and severity badges
+  agent: security_audit_report_generator
+  context:
+  - dns_and_network_reconnaissance
+  - web_application_security_inspection
+  - vulnerability_analysis_and_cve_research
+  - sql_injection_and_input_vulnerability_testing
+  - authentication_and_session_security_testing
+  - deep_endpoint_discovery_and_metadata_extraction
+  - dos_resilience_and_http_attack_testing

@@ -1,0 +1,30 @@
+[project]
+name = "devsecops_ai_security_audit_tool"
+version = "0.1.0"
+description = "devsecops_ai_security_audit_tool using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[file-processing,google-genai,litellm,tools]>=1.15.22,<2.0.0",
+    "exa-py",
+    "streamlit>=1.44.0,<2.0.0",
+]
+
+[project.scripts]
+devsecops_ai_security_audit_tool = "devsecops_ai_security_audit_tool.main:run"
+run_crew = "devsecops_ai_security_audit_tool.main:run"
+train = "devsecops_ai_security_audit_tool.main:train"
+replay = "devsecops_ai_security_audit_tool.main:replay"
+test = "devsecops_ai_security_audit_tool.main:test"
+run_with_trigger = "devsecops_ai_security_audit_tool.main:run_with_trigger"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
+project_id = "7efd30d8-6321-4f63-9031-0085ae3dd7ea"
+
+[tool.uv]
+override-dependencies = ["litellm<=1.82.6"]
