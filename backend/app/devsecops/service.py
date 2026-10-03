@@ -332,6 +332,7 @@ from app.devsecops.crew_tools.tools.rate_limiting_dos_resilience_tester import R
 from app.devsecops.crew_tools.tools.sql_injection_vulnerability_tester import SqlInjectionVulnerabilityTesterTool
 from app.devsecops.crew_tools.tools.authentication_security_tester import AuthenticationSecurityTesterTool
 from app.devsecops.crew_tools.tools.cve_owasp_intelligence_analyzer import CveOwaspIntelligenceAnalyzerTool
+from app.devsecops.crew_tools.tools.executive_security_report_generator import ExecutiveSecurityReportGeneratorTool
 
 def _execute_native_stage(target: str, stage_index: int, prior_reports: list[str]) -> str:
     """Executes a deep, comprehensive security scan for the selected pipeline stage using real live tools."""
@@ -457,55 +458,15 @@ def _execute_native_stage(target: str, stage_index: int, prior_reports: list[str
         elif stage_index == 7:
             # Stage 7: Executive Report
             prior_context = "\n\n".join(prior_reports)
-            ai_exec_report = _llm_synthesize(
-                prompt=f"Generate a comprehensive Chief Information Security Officer (CISO) Executive Security Audit Report for target {target} using all prior stage findings:\n\n{prior_context}",
-                system_prompt="You are a Chief Information Security Officer (CISO). Generate a pristine executive audit brief with an Executive Summary, Risk Matrix, Severity Breakdown Table, Compliance Posture, and a 3-Phase Prioritized Remediation Roadmap."
-            )
+            
+            exec_output = ""
+            try:
+                exec_output = ExecutiveSecurityReportGeneratorTool()._run(target=target, prior_context=prior_context)
+            except Exception as e:
+                exec_output = f"⚠️ Executive Report Warning: {str(e)}"
 
-            if ai_exec_report:
-                return ai_exec_report
+            return clean_report_markdown(exec_output)
 
-            return f"""# Executive Security Audit & Risk Assessment Brief
-**Target:** `{target}`  
-**Audit Scope:** Full Perimeter, DNS, Headers, SSL, Endpoints, DoS Resilience & Authentication  
-**Security Posture Rating:** **B+ (Moderately Hardened)**  
-**Generated On:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")}
-
----
-
-## 1. Executive Summary
-A comprehensive security assessment was executed against **`{target}`** using SentinelX's automated audit suite. The target demonstrated good foundational isolation with zero critical remote code execution vectors. However, critical HTTP transport configuration gaps, missing defense-in-depth headers, and perimeter fingerprinting require immediate remediation.
-
----
-
-## 2. Risk Matrix & Severity Breakdown
-| Severity | Count | Primary Impacted Components | Action SLA |
-|---|---|---|---|
-| Critical | 1 | Missing HSTS Strict-Transport-Security Header | 24 Hours |
-| High | 2 | Missing Content-Security-Policy & Clickjacking Protections | 48 Hours |
-| Medium | 4 | SPF/DMARC Configuration, Login Rate Limiting, Sensitive Path Probes | 7 Days |
-| Low | 5 | Server Fingerprint Leakage, Cookie SameSite Hardening | 14 Days |
-
----
-
-## 3. Prioritized 3-Phase Remediation Roadmap
-
-### Phase 1: Immediate Perimeter Hardening (Deploy within 24–48 Hours)
-- Add `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` header to production reverse proxy / CDN.
-- Configure `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff`.
-
-### Phase 2: Application Security Controls (Deploy within 7 Days)
-- Establish strict `Content-Security-Policy` with trusted script nonces and connect-src rules.
-- Deploy token-bucket rate limiting middleware (100 req/min per IP) on all `/api/*` and authentication routes.
-- Enforce strict SPF (`v=spf1 ... -all`) and DMARC (`v=DMARC1; p=reject;`) DNS records.
-
-### Phase 3: Defensive Monitoring & Compliance (Deploy within 14 Days)
-- Mask `Server` and `X-Powered-By` response headers to eliminate automated version fingerprinting.
-- Implement automated CI/CD static security scanning (Bandit & Trivy) to detect regressions.
-
----
-*Report certified by SentinelX AI DevSecOps Multi-Agent Defense Engine*
-"""
 
     except Exception as general_err:
         return f"## Stage {stage_index} Execution Log for `{target}`\n\n```text\n{str(general_err)}\n```\n"
