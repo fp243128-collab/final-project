@@ -35,6 +35,40 @@ export function stripEmojis(str: string): string {
     .trim();
 }
 
+/**
+ * Clean and normalize markdown string:
+ * - Fixes raw markdown strings where headers (###), table rows (|), or list items (-)
+ *   got collapsed onto the same line or lost newlines.
+ * - Cleans up dangling markdown syntax markers.
+ */
+export function normalizeMarkdownText(raw: string): string {
+  if (!raw) return "";
+  let text = stripEmojis(raw)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/^```(?:markdown|md|text)?\s*/i, "")
+    .replace(/\s*```$/, "");
+
+  // 1. Unpack horizontal dividers that run into text
+  text = text.replace(/([^\n])\s*(---+\s*)/g, "$1\n\n---\n\n");
+
+  // 2. Unpack headers (#, ##, ###, ####) that are stuck on the same line
+  text = text.replace(/([^\n])\s*(#{1,4}\s+[^\n#|]+)/g, "$1\n\n$2\n");
+
+  // 3. Unpack list items (bullets or numbered items) that are merged on one line
+  text = text.replace(/([^\n])\s*([•\-\*]\s+)/g, "$1\n- ");
+  text = text.replace(/([^\n])\s*(\b\d+\.\s+)/g, "$1\n$2");
+
+  // 4. Unpack table rows that got joined onto one line (e.g., "| Field | Value | |---|---| | IP | 1.2.3.4 |")
+  text = text.replace(/(\|[^\n|]+?\|)\s*(?=\|)/g, "$1\n");
+  text = text.replace(/([^\n|]+?)\s*(\|\s*[^|\n]+\s*\|\s*[^|\n]+\s*\|)/g, "$1\n\n$2");
+
+  // 5. Clean excessive blank lines
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  return text.trim();
+}
+
 // Severity Badges with real Lucide Icons
 export function SeverityBadge({ level }: { level: string }) {
   const clean = stripEmojis(level).toLowerCase().trim();
@@ -92,7 +126,8 @@ export function StatusBadge({ status }: { status: string }) {
     clean === "yes" ||
     clean === "valid" ||
     clean === "validated" ||
-    clean === "clean"
+    clean === "clean" ||
+    clean === "normal"
   ) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
@@ -145,31 +180,31 @@ export function StatusBadge({ status }: { status: string }) {
 // Helper to choose a contextual icon for headings
 function getHeadingIcon(title: string) {
   const t = title.toLowerCase();
-  if (t.includes("dns") || t.includes("ip") || t.includes("network") || t.includes("topology") || t.includes("asn")) {
+  if (t.includes("dns") || t.includes("ip") || t.includes("network") || t.includes("topology") || t.includes("asn") || t.includes("geolocation")) {
     return <Globe className="w-4 h-4 text-cyan-500 flex-shrink-0" />;
   }
   if (t.includes("record") || t.includes("mx") || t.includes("ns") || t.includes("cname") || t.includes("txt")) {
     return <Layers className="w-4 h-4 text-primary flex-shrink-0" />;
   }
-  if (t.includes("shodan") || t.includes("port") || t.includes("service") || t.includes("attack surface")) {
+  if (t.includes("shodan") || t.includes("port") || t.includes("service") || t.includes("attack surface") || t.includes("hostname")) {
     return <Radio className="w-4 h-4 text-amber-500 flex-shrink-0" />;
   }
   if (t.includes("header") || t.includes("cookie") || t.includes("ssl") || t.includes("tls") || t.includes("cert")) {
     return <Lock className="w-4 h-4 text-emerald-500 flex-shrink-0" />;
   }
-  if (t.includes("endpoint") || t.includes("path") || t.includes("discovery") || t.includes("probe")) {
+  if (t.includes("endpoint") || t.includes("path") || t.includes("discovery") || t.includes("probe") || t.includes("directory")) {
     return <Compass className="w-4 h-4 text-primary flex-shrink-0" />;
   }
   if (t.includes("dos") || t.includes("rate limit") || t.includes("resilience") || t.includes("load")) {
     return <Zap className="w-4 h-4 text-amber-500 flex-shrink-0" />;
   }
-  if (t.includes("injection") || t.includes("sql") || t.includes("xss") || t.includes("payload")) {
+  if (t.includes("injection") || t.includes("sql") || t.includes("xss") || t.includes("payload") || t.includes("cpe")) {
     return <Code2 className="w-4 h-4 text-rose-500 flex-shrink-0" />;
   }
   if (t.includes("auth") || t.includes("login") || t.includes("session") || t.includes("token")) {
     return <Key className="w-4 h-4 text-violet-500 flex-shrink-0" />;
   }
-  if (t.includes("cve") || t.includes("owasp") || t.includes("vulnerab") || t.includes("threat")) {
+  if (t.includes("cve") || t.includes("owasp") || t.includes("vulnerab") || t.includes("threat") || t.includes("finding")) {
     return <ShieldAlert className="w-4 h-4 text-rose-500 flex-shrink-0" />;
   }
   if (t.includes("warning") || t.includes("alert")) {
@@ -184,10 +219,10 @@ function getHeadingIcon(title: string) {
   return <Shield className="w-4 h-4 text-primary flex-shrink-0" />;
 }
 
-// Inline token renderer with smart emoji stripping & code formatting
+// Inline token renderer with smart formatting, code badges, and bold styling
 function Inline({ text, cell = false }: { text: string; cell?: boolean }) {
   const cleanStr = stripEmojis(text);
-  const plain = cleanStr.replace(/\*/g, "").trim();
+  const plain = cleanStr.replace(/[*_`]/g, "").trim();
 
   // If cell is exact severity keyword
   if (cell && /^(critical|high|medium|low|info)$/i.test(plain)) {
@@ -197,26 +232,29 @@ function Inline({ text, cell = false }: { text: string; cell?: boolean }) {
   // If cell is exact status keyword
   if (
     cell &&
-    /^(present|missing|passed|failed|active|compliant|protected|controlled|monitored|recommended|yes|no|valid|error|clean|exposed|forbidden|redirected)$/i.test(
+    /^(present|missing|passed|failed|active|compliant|protected|controlled|monitored|recommended|yes|no|valid|error|clean|exposed|forbidden|redirected|normal)$/i.test(
       plain
     )
   ) {
     return <StatusBadge status={plain} />;
   }
 
-  const parts = cleanStr.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
+  // Parse markdown bold, code, links, and italics cleanly
+  const parts = cleanStr.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|\*[^*]+\*)/g).filter(Boolean);
 
   return (
     <span>
       {parts.map((p, i) => {
-        if (p.startsWith("**") && p.endsWith("**") && p.length > 4) {
+        // Bold: **text**
+        if (p.startsWith("**") && p.endsWith("**") && p.length >= 4) {
           return (
             <strong key={i} className="font-semibold text-foreground">
               <Inline text={p.slice(2, -2)} />
             </strong>
           );
         }
-        if (p.startsWith("`") && p.endsWith("`") && p.length > 2) {
+        // Inline code: `code`
+        if (p.startsWith("`") && p.endsWith("`") && p.length >= 2) {
           return (
             <code
               key={i}
@@ -224,6 +262,29 @@ function Inline({ text, cell = false }: { text: string; cell?: boolean }) {
             >
               {p.slice(1, -1)}
             </code>
+          );
+        }
+        // Link: [text](url)
+        const linkMatch = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (linkMatch) {
+          return (
+            <a
+              key={i}
+              href={linkMatch[2]}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+            >
+              {linkMatch[1]}
+            </a>
+          );
+        }
+        // Italics: *text*
+        if (p.startsWith("*") && p.endsWith("*") && p.length >= 2) {
+          return (
+            <span key={i} className="italic text-muted-foreground">
+              {p.slice(1, -1)}
+            </span>
           );
         }
         return <React.Fragment key={i}>{p}</React.Fragment>;
@@ -236,10 +297,12 @@ const splitRow = (line: string) =>
   line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => stripEmojis(c.trim()));
 
 function Table({ rows }: { rows: string[] }) {
+  if (!rows.length) return null;
   const header = splitRow(rows[0]);
-  const body = rows.slice(2).map(splitRow);
+  const body = rows.slice(2).map(splitRow).filter((r) => r.length > 0 && r.some((c) => c.length > 0));
+
   return (
-    <div className="my-4 overflow-x-auto rounded-xl border border-border/80 bg-surface/50 shadow-xs">
+    <div className="my-4 overflow-x-auto rounded-xl border border-border/80 bg-surface/60 shadow-xs">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="bg-surface border-b border-border/80">
@@ -248,7 +311,7 @@ function Table({ rows }: { rows: string[] }) {
                 key={i}
                 className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted whitespace-nowrap"
               >
-                <Inline text={h.replace(/\*/g, "")} />
+                <Inline text={h.replace(/[*_`]/g, "")} />
               </th>
             ))}
           </tr>
@@ -278,11 +341,8 @@ function Table({ rows }: { rows: string[] }) {
 }
 
 export default function MarkdownReport({ content, compact = false }: { content: string; compact?: boolean }) {
-  const rawClean = stripEmojis(content || "")
-    .replace(/^```(?:markdown|md|text)?\s*/i, "")
-    .replace(/\s*```$/, "");
-
-  const lines = rawClean.split("\n");
+  const normalized = normalizeMarkdownText(content || "");
+  const lines = normalized.split("\n");
   const blocks: React.ReactNode[] = [];
   let kv: { k: string; v: string }[] = [];
 
@@ -351,12 +411,17 @@ export default function MarkdownReport({ content, compact = false }: { content: 
       continue;
     }
 
-    // Table
-    if (t.startsWith("|") && lines[i + 1]?.trim().match(/^\|?\s*:?-{2,}/)) {
+    // Markdown Table
+    if (t.startsWith("|") && (lines[i + 1]?.trim().match(/^\|?\s*:?-{2,}/) || t.includes("|"))) {
       const rows: string[] = [];
-      while (i < lines.length && lines[i].trim().startsWith("|")) rows.push(lines[i++]);
-      blocks.push(<Table key={`t-${i}`} rows={rows} />);
-      continue;
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        rows.push(lines[i].trim());
+        i++;
+      }
+      if (rows.length >= 2) {
+        blocks.push(<Table key={`t-${i}`} rows={rows} />);
+        continue;
+      }
     }
 
     // Blockquotes
@@ -372,16 +437,16 @@ export default function MarkdownReport({ content, compact = false }: { content: 
       continue;
     }
 
-    // Headings
+    // Headings (#, ##, ###, ####)
     const h = t.match(/^(#{1,4})\s+(.+)$/);
     if (h) {
       const level = h[1].length;
-      const cleanTitle = stripEmojis(h[2]).replace(/\*/g, "");
+      const cleanTitle = stripEmojis(h[2]).replace(/[*_`]/g, "");
       const icon = getHeadingIcon(cleanTitle);
 
       blocks.push(
         level <= 2 ? (
-          <h3 key={`h-${i}`} className="text-base font-bold text-foreground mt-4 mb-2 pb-2 border-b border-border/60 flex items-center gap-2">
+          <h3 key={`h-${i}`} className="text-base font-bold text-foreground mt-5 mb-2 pb-2 border-b border-border/60 flex items-center gap-2">
             {icon}
             <span>{cleanTitle}</span>
           </h3>
@@ -406,13 +471,16 @@ export default function MarkdownReport({ content, compact = false }: { content: 
       continue;
     }
 
-    // Lists (bullets or numbered)
-    if (/^([-*]|\d+\.)\s+/.test(t)) {
+    // Bullet or Numbered Lists
+    if (/^([-*•]|\d+\.)\s+/.test(t)) {
       const ordered = /^\d+\./.test(t);
       const items: { text: string; nested: boolean }[] = [];
-      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
+      while (i < lines.length && /^\s*([-*•]|\d+\.)\s+/.test(lines[i])) {
         const raw = lines[i];
-        items.push({ text: stripEmojis(raw.trim().replace(/^([-*]|\d+\.)\s+/, "")), nested: /^\s{2,}/.test(raw) });
+        items.push({
+          text: stripEmojis(raw.trim().replace(/^([-*•]|\d+\.)\s+/, "")),
+          nested: /^\s{2,}/.test(raw),
+        });
         i++;
       }
       blocks.push(
@@ -436,7 +504,7 @@ export default function MarkdownReport({ content, compact = false }: { content: 
       continue;
     }
 
-    // Paragraph
+    // Regular Paragraph
     blocks.push(
       <p key={`p-${i}`} className="my-2 text-sm text-foreground/85 leading-relaxed">
         <Inline text={t} />

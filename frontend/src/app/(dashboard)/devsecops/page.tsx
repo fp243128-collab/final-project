@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { API_URL } from "@/lib/api";
-import MarkdownReport, { stripEmojis } from "@/components/MarkdownReport";
+import MarkdownReport, { stripEmojis, normalizeMarkdownText } from "@/components/MarkdownReport";
 import {
   Shield,
   Activity,
@@ -184,7 +184,7 @@ export default function DevSecOpsPage() {
   // Structured Markdown Sections Parser
   const parseReportSections = (text: string) => {
     if (!text) return [];
-    const cleaned = text.replace(/^```(?:markdown|md|text)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const cleaned = normalizeMarkdownText(text);
     const parts = cleaned.split(/(?=^##\s+)/m).filter(Boolean);
     if (parts.length <= 1) {
       return [{ title: "Overview", content: cleaned }];
