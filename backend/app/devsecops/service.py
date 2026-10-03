@@ -482,7 +482,7 @@ def _execute_native_stage(target: str, stage_index: int, prior_reports: list[str
             if ai_exec_report:
                 return ai_exec_report
 
-            return f"""# 🛡️ Executive Security Audit & Risk Assessment Brief
+            return f"""# Executive Security Audit & Risk Assessment Brief
 **Target:** `{target}`  
 **Audit Scope:** Full Perimeter, DNS, Headers, SSL, Endpoints, DoS Resilience & Authentication  
 **Security Posture Rating:** **B+ (Moderately Hardened)**  
@@ -498,10 +498,10 @@ A comprehensive security assessment was executed against **`{target}`** using Se
 ## 2. Risk Matrix & Severity Breakdown
 | Severity | Count | Primary Impacted Components | Action SLA |
 |---|---|---|---|
-| 🔴 **Critical** | 1 | Missing HSTS Strict-Transport-Security Header | 24 Hours |
-| 🟠 **High** | 2 | Missing Content-Security-Policy & Clickjacking Protections | 48 Hours |
-| 🟡 **Medium** | 4 | SPF/DMARC Configuration, Login Rate Limiting, Sensitive Path Probes | 7 Days |
-| 🔵 **Low** | 5 | Server Fingerprint Leakage, Cookie SameSite Hardening | 14 Days |
+| Critical | 1 | Missing HSTS Strict-Transport-Security Header | 24 Hours |
+| High | 2 | Missing Content-Security-Policy & Clickjacking Protections | 48 Hours |
+| Medium | 4 | SPF/DMARC Configuration, Login Rate Limiting, Sensitive Path Probes | 7 Days |
+| Low | 5 | Server Fingerprint Leakage, Cookie SameSite Hardening | 14 Days |
 
 ---
 
