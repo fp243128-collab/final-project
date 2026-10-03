@@ -22,10 +22,8 @@ import {
   Zap,
   Activity,
   Compass,
-  Terminal,
   Server,
   Code2,
-  Check,
 } from "lucide-react";
 
 // Severity Badges with real Lucide Icons
