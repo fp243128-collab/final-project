@@ -43,7 +43,7 @@ export function stripEmojis(str: string): string {
  */
 export function normalizeMarkdownText(raw: string): string {
   if (!raw) return "";
-  let text = stripEmojis(raw)
+  const text = stripEmojis(raw)
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/^```(?:markdown|md|text)?\s*/i, "")
