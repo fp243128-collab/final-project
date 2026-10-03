@@ -163,10 +163,8 @@ def clean_report_markdown(report: str) -> str:
     cleaned = report.strip()
     cleaned = re.sub(r"^```(?:markdown|md|text)?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```$", "", cleaned)
-    # Strip emojis and pictographs
+    # Strip residual emoji glyphs
     cleaned = re.sub(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\ufe0f]|[\u200d]|[\u2b50]|[\u20e3]", "", cleaned)
-    cleaned = re.sub(r"^[ \t]+", "", cleaned, flags=re.MULTILINE)
-    cleaned = re.sub(r" {2,}", " ", cleaned)
     return cleaned.strip()
 
 # Global Run State for DevSecOps AI Audit
