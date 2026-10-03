@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { API_URL } from "@/lib/api";
+import MarkdownReport from "@/components/MarkdownReport";
 import {
   Shield,
   Activity,
@@ -687,10 +688,14 @@ export default function DevSecOpsPage() {
             </div>
 
             {/* Tab Body */}
-            <div className="p-4 rounded-lg bg-background border border-border/80 text-foreground leading-relaxed text-sm whitespace-pre-wrap font-sans max-h-[600px] overflow-y-auto">
-              {reportSections.find((s) => s.title === activeTab)?.content ||
-                reportSections[0]?.content ||
-                audit.report}
+            <div className="p-5 rounded-xl bg-background border border-border/80 max-h-[640px] overflow-y-auto">
+              <MarkdownReport
+                content={
+                  reportSections.find((s) => s.title === activeTab)?.content ||
+                  reportSections[0]?.content ||
+                  audit.report
+                }
+              />
             </div>
 
             {/* Guided Individual Stage Reports if Available */}
@@ -699,7 +704,7 @@ export default function DevSecOpsPage() {
                 <div className="text-xs font-mono uppercase text-muted">
                   Completed Stage Logs ({Object.keys(audit.reports).length} stages)
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   {Object.entries(audit.reports).map(([stageName, stageContent], idx) => (
                     <details key={idx} className="border border-border rounded-lg p-3 bg-background group">
                       <summary className="text-xs font-semibold text-foreground cursor-pointer flex items-center justify-between">
@@ -708,8 +713,8 @@ export default function DevSecOpsPage() {
                           ▶
                         </span>
                       </summary>
-                      <div className="mt-2 text-xs text-muted font-mono bg-surface p-2.5 rounded border border-border/60 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                        {stageContent}
+                      <div className="mt-3 p-3 rounded-lg bg-surface border border-border/60 max-h-96 overflow-y-auto">
+                        <MarkdownReport content={stageContent} compact />
                       </div>
                     </details>
                   ))}
