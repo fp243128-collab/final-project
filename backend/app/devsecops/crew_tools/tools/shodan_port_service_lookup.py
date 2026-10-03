@@ -133,8 +133,8 @@ class ShodanPortServiceLookupTool(BaseTool):
     def _build_report(self, host: str, ip: str, data: dict) -> str:
         lines: List[str] = []
 
-        # ── Executive Header ──
-        lines.append("# Perimeter Attack Surface & Shodan Intelligence")
+        # ── Section: Perimeter Ports & Shodan ──
+        lines.append("## Perimeter Ports & Shodan Surface")
         lines.append("")
         lines.append(f"**Target Host:** `{host}`  ")
         lines.append(f"**Resolved Endpoint IP:** `{ip}`  ")

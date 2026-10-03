@@ -49,24 +49,29 @@ export function normalizeMarkdownText(raw: string): string {
     .replace(/^```(?:markdown|md|text)?\s*/i, "")
     .replace(/\s*```$/, "");
 
-  // 1. Unpack horizontal dividers that run into text
-  text = text.replace(/([^\n])\s*(---+\s*)/g, "$1\n\n---\n\n");
+  const lines = text.split("\n");
+  const output: string[] = [];
 
-  // 2. Unpack headers (#, ##, ###, ####) that are stuck on the same line
-  text = text.replace(/([^\n])\s*(#{1,4}\s+[^\n#|]+)/g, "$1\n\n$2\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
 
-  // 3. Unpack list items (bullets or numbered items) that are merged on one line
-  text = text.replace(/([^\n])\s*([•\-\*]\s+)/g, "$1\n- ");
-  text = text.replace(/([^\n])\s*(\b\d+\.\s+)/g, "$1\n$2");
+    // Table rows (starts with | or contains | with end |) - MUST preserve intact!
+    if (trimmed.startsWith("|") || (trimmed.endsWith("|") && trimmed.includes("|"))) {
+      output.push(trimmed);
+      continue;
+    }
 
-  // 4. Unpack table rows that got joined onto one line (e.g., "| Field | Value | |---|---| | IP | 1.2.3.4 |")
-  text = text.replace(/(\|[^\n|]+?\|)\s*(?=\|)/g, "$1\n");
-  text = text.replace(/([^\n|]+?)\s*(\|\s*[^|\n]+\s*\|\s*[^|\n]+\s*\|)/g, "$1\n\n$2");
+    // Horizontal rule
+    if (/^---+$/.test(trimmed)) {
+      output.push("---");
+      continue;
+    }
 
-  // 5. Clean excessive blank lines
-  text = text.replace(/\n{3,}/g, "\n\n");
+    output.push(line);
+  }
 
-  return text.trim();
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // Severity Badges with real Lucide Icons
@@ -186,7 +191,7 @@ function getHeadingIcon(title: string) {
   if (t.includes("record") || t.includes("mx") || t.includes("ns") || t.includes("cname") || t.includes("txt")) {
     return <Layers className="w-4 h-4 text-primary flex-shrink-0" />;
   }
-  if (t.includes("shodan") || t.includes("port") || t.includes("service") || t.includes("attack surface") || t.includes("hostname")) {
+  if (t.includes("shodan") || t.includes("port") || t.includes("service") || t.includes("attack surface") || t.includes("hostname") || t.includes("perimeter")) {
     return <Radio className="w-4 h-4 text-amber-500 flex-shrink-0" />;
   }
   if (t.includes("header") || t.includes("cookie") || t.includes("ssl") || t.includes("tls") || t.includes("cert")) {
@@ -210,10 +215,10 @@ function getHeadingIcon(title: string) {
   if (t.includes("warning") || t.includes("alert")) {
     return <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />;
   }
-  if (t.includes("remediation") || t.includes("roadmap") || t.includes("action") || t.includes("recommend")) {
+  if (t.includes("remediation") || t.includes("roadmap") || t.includes("action") || t.includes("recommend") || t.includes("item")) {
     return <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />;
   }
-  if (t.includes("summary") || t.includes("brief") || t.includes("report") || t.includes("matrix")) {
+  if (t.includes("summary") || t.includes("brief") || t.includes("report") || t.includes("matrix") || t.includes("overview")) {
     return <FileText className="w-4 h-4 text-primary flex-shrink-0" />;
   }
   return <Shield className="w-4 h-4 text-primary flex-shrink-0" />;
@@ -293,40 +298,65 @@ function Inline({ text, cell = false }: { text: string; cell?: boolean }) {
   );
 }
 
-const splitRow = (line: string) =>
-  line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => stripEmojis(c.trim()));
+const splitRow = (line: string) => {
+  const inner = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return inner.split("|").map((c) => c.trim());
+};
+
+const isSeparatorRow = (line: string) => {
+  const inner = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  return inner.split("|").every((c) => /^:?-{2,}:?$/.test(c.trim()));
+};
 
 function Table({ rows }: { rows: string[] }) {
-  if (!rows.length) return null;
-  const header = splitRow(rows[0]);
-  const body = rows.slice(2).map(splitRow).filter((r) => r.length > 0 && r.some((c) => c.length > 0));
+  if (!rows || rows.length === 0) return null;
+
+  const validRows = rows.filter((r) => r.trim().startsWith("|") && r.trim().includes("|"));
+  if (validRows.length === 0) return null;
+
+  let header: string[] = [];
+  let body: string[][] = [];
+
+  if (validRows.length >= 2 && isSeparatorRow(validRows[1])) {
+    header = splitRow(validRows[0]);
+    body = validRows
+      .slice(2)
+      .filter((r) => !isSeparatorRow(r) && r.trim().length > 0)
+      .map(splitRow);
+  } else {
+    header = splitRow(validRows[0]);
+    body = validRows
+      .slice(1)
+      .filter((r) => !isSeparatorRow(r) && r.trim().length > 0)
+      .map(splitRow);
+  }
 
   return (
-    <div className="my-4 overflow-x-auto rounded-xl border border-border/80 bg-surface/60 shadow-xs">
+    <div className="my-4 overflow-x-auto rounded-xl border border-border/80 bg-surface/70 shadow-xs">
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-surface border-b border-border/80">
+          <tr className="bg-surface/90 border-b border-border/80">
             {header.map((h, i) => (
               <th
                 key={i}
-                className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted whitespace-nowrap"
+                className="text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
               >
                 <Inline text={h.replace(/[*_`]/g, "")} />
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border/40">
           {body.map((r, ri) => (
             <tr
               key={ri}
-              className="border-b border-border/40 last:border-0 hover:bg-primary/[0.04] transition-colors"
+              className="hover:bg-primary/[0.04] transition-colors"
             >
               {r.map((c, ci) => (
                 <td
                   key={ci}
-                  className={`px-4 py-2.5 align-middle text-foreground/90 ${
-                    ci === 0 ? "font-medium text-foreground" : ""
+                  className={`px-4 py-3 align-middle text-foreground/90 ${
+                    ci === 0 ? "font-semibold text-foreground whitespace-nowrap" : ""
                   }`}
                 >
                   <Inline text={c} cell />
@@ -412,13 +442,13 @@ export default function MarkdownReport({ content, compact = false }: { content: 
     }
 
     // Markdown Table
-    if (t.startsWith("|") && (lines[i + 1]?.trim().match(/^\|?\s*:?-{2,}/) || t.includes("|"))) {
+    if (t.startsWith("|") && t.includes("|")) {
       const rows: string[] = [];
-      while (i < lines.length && lines[i].trim().startsWith("|")) {
+      while (i < lines.length && lines[i].trim().startsWith("|") && lines[i].trim().includes("|")) {
         rows.push(lines[i].trim());
         i++;
       }
-      if (rows.length >= 2) {
+      if (rows.length > 0) {
         blocks.push(<Table key={`t-${i}`} rows={rows} />);
         continue;
       }

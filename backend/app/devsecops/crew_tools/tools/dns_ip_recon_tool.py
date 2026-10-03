@@ -345,7 +345,7 @@ class DnsIpReconTool(BaseTool):
         lines: List[str] = []
 
         # ── Executive Header ──
-        lines.append(f"# Network Reconnaissance Intelligence Report")
+        lines.append("## Target Overview")
         lines.append("")
         lines.append(f"**Target Host:** `{domain}`  ")
         lines.append(f"**Primary IPv4 Origin:** `{resolved_ip or 'Unresolved'}`  ")

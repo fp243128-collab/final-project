@@ -185,14 +185,14 @@ export default function DevSecOpsPage() {
   const parseReportSections = (text: string) => {
     if (!text) return [];
     const cleaned = normalizeMarkdownText(text);
-    const parts = cleaned.split(/(?=^##\s+)/m).filter(Boolean);
+    const parts = cleaned.split(/(?=^##\s+)/m).filter((p) => p.trim().length > 0);
     if (parts.length <= 1) {
-      return [{ title: "Overview", content: cleaned }];
+      return [{ title: "Target Overview", content: cleaned }];
     }
     return parts.map((part) => {
       const match = part.match(/^##\s+(.+?)$/m);
-      const rawTitle = match ? match[1].replace(/[*_~`]/g, "").trim().slice(0, 42) : "Section";
-      const cleanTitle = stripEmojis(rawTitle).replace(/^\d+\.\s*/, "").trim() || "Section";
+      const rawTitle = match ? match[1].replace(/[*_~`]/g, "").trim().slice(0, 42) : "Target Overview";
+      const cleanTitle = stripEmojis(rawTitle).replace(/^\d+\.\s*/, "").trim() || "Target Overview";
       const content = part.replace(/^##\s+.+?$/m, "").trim();
       return { title: cleanTitle, content };
     });
@@ -200,25 +200,27 @@ export default function DevSecOpsPage() {
 
   const getTabIcon = (title: string) => {
     const t = title.toLowerCase();
-    if (t.includes("dns") || t.includes("ip") || t.includes("network") || t.includes("topology") || t.includes("recon"))
+    if (t.includes("overview") || t.includes("target"))
+      return <Shield className="w-3.5 h-3.5 flex-shrink-0 text-primary" />;
+    if (t.includes("dns") || t.includes("ip") || t.includes("network") || t.includes("topology") || t.includes("recon") || t.includes("asn") || t.includes("geolocation"))
       return <Globe className="w-3.5 h-3.5 flex-shrink-0 text-cyan-500" />;
-    if (t.includes("shodan") || t.includes("port") || t.includes("surface"))
+    if (t.includes("shodan") || t.includes("port") || t.includes("surface") || t.includes("perimeter"))
       return <Radio className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />;
-    if (t.includes("header") || t.includes("cookie") || t.includes("ssl") || t.includes("tls") || t.includes("cert"))
+    if (t.includes("header") || t.includes("cookie") || t.includes("ssl") || t.includes("tls") || t.includes("cert") || t.includes("email") || t.includes("posture"))
       return <Lock className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />;
     if (t.includes("endpoint") || t.includes("path") || t.includes("discovery") || t.includes("prob"))
       return <Compass className="w-3.5 h-3.5 flex-shrink-0 text-primary" />;
     if (t.includes("dos") || t.includes("rate limit") || t.includes("load") || t.includes("resilience"))
       return <Zap className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />;
-    if (t.includes("injection") || t.includes("sql") || t.includes("xss") || t.includes("payload"))
+    if (t.includes("injection") || t.includes("sql") || t.includes("xss") || t.includes("payload") || t.includes("cpe") || t.includes("software") || t.includes("fingerprint"))
       return <Code2 className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />;
     if (t.includes("auth") || t.includes("login") || t.includes("session") || t.includes("token"))
       return <Key className="w-3.5 h-3.5 flex-shrink-0 text-violet-500" />;
-    if (t.includes("cve") || t.includes("owasp") || t.includes("vulnerab") || t.includes("threat"))
+    if (t.includes("cve") || t.includes("owasp") || t.includes("vulnerab") || t.includes("threat") || t.includes("hostname") || t.includes("classification"))
       return <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />;
     if (t.includes("risk") || t.includes("profile") || t.includes("matrix") || t.includes("score"))
       return <Activity className="w-3.5 h-3.5 flex-shrink-0 text-cyan-500" />;
-    if (t.includes("remediation") || t.includes("roadmap") || t.includes("action") || t.includes("recommend"))
+    if (t.includes("remediation") || t.includes("roadmap") || t.includes("action") || t.includes("recommend") || t.includes("item") || t.includes("summary"))
       return <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />;
     return <FileText className="w-3.5 h-3.5 flex-shrink-0 text-primary" />;
   };
