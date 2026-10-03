@@ -1,6 +1,6 @@
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Type, List, Dict, Any, Optional
+from typing import Type, List, Dict, Any, Optional, Tuple
 from urllib.parse import urlparse
 import requests
 
