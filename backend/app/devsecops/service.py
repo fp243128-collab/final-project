@@ -715,9 +715,8 @@ def run_all_remaining() -> Dict[str, Any]:
 def stop_audit() -> Dict[str, Any]:
     with audit_run_state["lock"]:
         audit_run_state["stop_requested"] = True
-        if audit_run_state["status"] in {"queued", "complete"}:
-            audit_run_state["status"] = "stopped"
-            audit_run_state["active"] = "Assessment paused"
+        audit_run_state["status"] = "stopped"
+        audit_run_state["active"] = "Assessment paused"
     return get_audit_status()
 
 def get_audit_status() -> Dict[str, Any]:
