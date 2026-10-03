@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   ShieldAlert,
   Activity,
-  Server,
   AlertTriangle,
   Bell,
   BarChart2,
@@ -10,7 +9,6 @@ import {
   FileText,
   Settings,
   Shield,
-  FileSearch,
   LogOut
 } from "lucide-react";
 

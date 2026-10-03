@@ -1,23 +1,17 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { API_URL } from "@/lib/api";
 import {
   Shield,
   Activity,
-  AlertTriangle,
   Play,
   Pause,
   ArrowRight,
   Download,
   CheckCircle2,
-  AlertCircle,
-  ExternalLink,
   Layers,
-  Radio,
-  Cpu,
   RefreshCw,
-  Search,
   Lock,
   Globe
 } from "lucide-react";
@@ -64,28 +58,31 @@ export default function DevSecOpsPage() {
   const [activeTab, setActiveTab] = useState<string>("Overview");
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/api/devsecops/audit/status`);
       if (res.ok) {
         const data = await res.json();
         setAudit(data);
-        if (data.target && !target) {
-          setTarget(data.target);
+        if (data.target) {
+          setTarget((prev) => (prev ? prev : data.target));
         }
       }
     } catch (err) {
       console.error("Failed to fetch audit status:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchStatus();
+    const timer = setTimeout(() => {
+      fetchStatus();
+    }, 0);
     pollIntervalRef.current = setInterval(fetchStatus, 2000);
     return () => {
+      clearTimeout(timer);
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, []);
+  }, [fetchStatus]);
 
   const handleLaunch = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -193,17 +193,25 @@ def get_crew_class():
     )
     src_dir = os.path.join(crew_project_dir, "src")
     import sys
+    import importlib
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
     
-    # Load .env from devsecops project if keys not in env
+    # Load .env keys directly into os.environ
     dev_env = os.path.join(crew_project_dir, ".env")
     if os.path.exists(dev_env):
-        from dotenv import load_dotenv
-        load_dotenv(dev_env)
-        
-    from devsecops_ai_security_audit_tool.crew import DevsecopsAiSecurityAuditToolCrew
-    return DevsecopsAiSecurityAuditToolCrew
+        try:
+            with open(dev_env, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip())
+        except Exception:
+            pass
+
+    crew_module = importlib.import_module("devsecops_ai_security_audit_tool.crew")
+    return getattr(crew_module, "DevsecopsAiSecurityAuditToolCrew")
 
 def audit_task_progress_callback(state: dict, task_output) -> None:
     description = getattr(task_output, "description", "") or ""
