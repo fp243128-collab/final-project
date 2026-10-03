@@ -38,7 +38,10 @@ export default function LoginPage() {
 
       router.push("/overview");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to sign in. Please verify your credentials.";
+      let message = err instanceof Error ? err.message : "Failed to sign in.";
+      if (message.toLowerCase().includes("failed to fetch")) {
+        message = `Cannot connect to backend server at ${API_URL}. Please ensure the backend is running and NEXT_PUBLIC_API_URL is configured correctly.`;
+      }
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
