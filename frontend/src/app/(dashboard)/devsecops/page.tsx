@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { API_URL } from "@/lib/api";
-import MarkdownReport from "@/components/MarkdownReport";
+import MarkdownReport, { stripEmojis } from "@/components/MarkdownReport";
 import {
   Shield,
   Activity,
@@ -15,7 +15,15 @@ import {
   RefreshCw,
   Lock,
   Globe,
-  AlertTriangle
+  AlertTriangle,
+  Radio,
+  Compass,
+  Zap,
+  Code2,
+  Key,
+  ShieldAlert,
+  FileText,
+  ChevronRight,
 } from "lucide-react";
 
 interface PipelineStage {
@@ -183,10 +191,36 @@ export default function DevSecOpsPage() {
     }
     return parts.map((part) => {
       const match = part.match(/^##\s+(.+?)$/m);
-      const title = match ? match[1].replace(/[*_~`]/g, "").trim().slice(0, 36) : "Section";
+      const rawTitle = match ? match[1].replace(/[*_~`]/g, "").trim().slice(0, 42) : "Section";
+      const cleanTitle = stripEmojis(rawTitle).replace(/^\d+\.\s*/, "").trim() || "Section";
       const content = part.replace(/^##\s+.+?$/m, "").trim();
-      return { title, content };
+      return { title: cleanTitle, content };
     });
+  };
+
+  const getTabIcon = (title: string) => {
+    const t = title.toLowerCase();
+    if (t.includes("dns") || t.includes("ip") || t.includes("network") || t.includes("topology") || t.includes("recon"))
+      return <Globe className="w-3.5 h-3.5 flex-shrink-0 text-cyan-500" />;
+    if (t.includes("shodan") || t.includes("port") || t.includes("surface"))
+      return <Radio className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />;
+    if (t.includes("header") || t.includes("cookie") || t.includes("ssl") || t.includes("tls") || t.includes("cert"))
+      return <Lock className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />;
+    if (t.includes("endpoint") || t.includes("path") || t.includes("discovery") || t.includes("prob"))
+      return <Compass className="w-3.5 h-3.5 flex-shrink-0 text-primary" />;
+    if (t.includes("dos") || t.includes("rate limit") || t.includes("load") || t.includes("resilience"))
+      return <Zap className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />;
+    if (t.includes("injection") || t.includes("sql") || t.includes("xss") || t.includes("payload"))
+      return <Code2 className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />;
+    if (t.includes("auth") || t.includes("login") || t.includes("session") || t.includes("token"))
+      return <Key className="w-3.5 h-3.5 flex-shrink-0 text-violet-500" />;
+    if (t.includes("cve") || t.includes("owasp") || t.includes("vulnerab") || t.includes("threat"))
+      return <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />;
+    if (t.includes("risk") || t.includes("profile") || t.includes("matrix") || t.includes("score"))
+      return <Activity className="w-3.5 h-3.5 flex-shrink-0 text-cyan-500" />;
+    if (t.includes("remediation") || t.includes("roadmap") || t.includes("action") || t.includes("recommend"))
+      return <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />;
+    return <FileText className="w-3.5 h-3.5 flex-shrink-0 text-primary" />;
   };
 
   const reportSections = audit?.report ? parseReportSections(audit.report) : [];
@@ -670,19 +704,20 @@ export default function DevSecOpsPage() {
               <span className="text-xs text-muted font-mono">Interactive Tabs</span>
             </div>
 
-            {/* Tabs Header */}
+            {/* Tabs Header with Real Lucide Icons */}
             <div className="flex flex-wrap gap-2 border-b border-border/40 pb-2">
               {reportSections.map((sec, idx) => (
                 <button
                   key={idx}
                   onClick={() => setActiveTab(sec.title)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === sec.title || (activeTab === "Overview" && idx === 0)
-                      ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30"
-                      : "text-muted hover:text-foreground hover:bg-surface"
+                      ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shadow-2xs"
+                      : "text-muted hover:text-foreground hover:bg-surface border border-transparent"
                   }`}
                 >
-                  {sec.title}
+                  {getTabIcon(sec.title)}
+                  <span>{sec.title}</span>
                 </button>
               ))}
             </div>
@@ -701,17 +736,19 @@ export default function DevSecOpsPage() {
             {/* Guided Individual Stage Reports if Available */}
             {audit.reports && Object.keys(audit.reports).length > 0 && (
               <div className="pt-4 border-t border-border/40 space-y-3">
-                <div className="text-xs font-mono uppercase text-muted">
+                <div className="text-xs font-mono uppercase text-muted flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-primary" />
                   Completed Stage Logs ({Object.keys(audit.reports).length} stages)
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                   {Object.entries(audit.reports).map(([stageName, stageContent], idx) => (
                     <details key={idx} className="border border-border rounded-lg p-3 bg-background group">
                       <summary className="text-xs font-semibold text-foreground cursor-pointer flex items-center justify-between">
-                        <span>{stageName}</span>
-                        <span className="text-primary text-[11px] group-open:rotate-90 transition-transform">
-                          ▶
+                        <span className="flex items-center gap-2">
+                          <Layers className="w-3.5 h-3.5 text-primary/70" />
+                          {stripEmojis(stageName)}
                         </span>
+                        <ChevronRight className="w-4 h-4 text-primary group-open:rotate-90 transition-transform" />
                       </summary>
                       <div className="mt-3 p-3 rounded-lg bg-surface border border-border/60 max-h-96 overflow-y-auto">
                         <MarkdownReport content={stageContent} compact />
