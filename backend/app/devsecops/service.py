@@ -383,11 +383,7 @@ def _execute_native_stage(target: str, stage_index: int, prior_reports: list[str
 
             return f"""{clean_report_markdown(headers_output)}
 
----
-
 {clean_report_markdown(cookie_output)}
-
----
 
 {clean_report_markdown(ssl_output)}
 """
