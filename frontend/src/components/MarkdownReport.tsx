@@ -44,12 +44,18 @@ export function stripEmojis(str: string): string {
 export function normalizeMarkdownText(raw: string): string {
   if (!raw) return "";
   const text = stripEmojis(raw)
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/^```(?:markdown|md|text)?\s*/i, "")
     .replace(/\s*```$/, "");
 
-  const lines = text.split("\n");
+  // Separate ## headers if glued to text without preceding newline
+  const withHeaders = text.replace(/([^\n#])\s*(#{1,4}\s+[^\n]+)/g, "$1\n\n$2\n\n");
+
+  const lines = withHeaders.split("\n");
   const output: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -57,7 +63,7 @@ export function normalizeMarkdownText(raw: string): string {
     const trimmed = line.trim();
 
     // Table rows (starts with | or contains | with end |) - MUST preserve intact!
-    if (trimmed.startsWith("|") || (trimmed.endsWith("|") && trimmed.includes("|"))) {
+    if (trimmed.startsWith("|") && trimmed.includes("|")) {
       output.push(trimmed);
       continue;
     }
@@ -79,7 +85,7 @@ export function SeverityBadge({ level }: { level: string }) {
   const clean = stripEmojis(level).toLowerCase().trim();
   if (clean.includes("crit") || clean.includes("red")) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 whitespace-nowrap shadow-xs">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 whitespace-nowrap shadow-xs flex-shrink-0">
         <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
         Critical
       </span>
@@ -87,7 +93,7 @@ export function SeverityBadge({ level }: { level: string }) {
   }
   if (clean.includes("high") || clean.includes("orange")) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap shadow-xs">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap shadow-xs flex-shrink-0">
         <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
         High
       </span>
@@ -95,7 +101,7 @@ export function SeverityBadge({ level }: { level: string }) {
   }
   if (clean.includes("med") || clean.includes("yellow")) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 whitespace-nowrap shadow-xs">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20 whitespace-nowrap shadow-xs flex-shrink-0">
         <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-yellow-500" />
         Medium
       </span>
@@ -103,14 +109,14 @@ export function SeverityBadge({ level }: { level: string }) {
   }
   if (clean.includes("low") || clean.includes("blue") || clean.includes("info")) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 whitespace-nowrap shadow-xs">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 whitespace-nowrap shadow-xs flex-shrink-0">
         <Info className="w-3.5 h-3.5 flex-shrink-0 text-blue-500" />
         Low
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-muted/15 text-muted-foreground border border-muted/25 whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-muted/15 text-muted-foreground border border-muted/25 whitespace-nowrap flex-shrink-0">
       <Info className="w-3.5 h-3.5 flex-shrink-0" />
       {stripEmojis(level)}
     </span>
@@ -135,7 +141,7 @@ export function StatusBadge({ status }: { status: string }) {
     clean === "normal"
   ) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap flex-shrink-0">
         <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 text-emerald-500" />
         {stripEmojis(status) || "Passed"}
       </span>
@@ -151,7 +157,7 @@ export function StatusBadge({ status }: { status: string }) {
     clean === "exposed"
   ) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 whitespace-nowrap flex-shrink-0">
         <XCircle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
         {stripEmojis(status) || "Missing"}
       </span>
@@ -165,7 +171,7 @@ export function StatusBadge({ status }: { status: string }) {
     clean === "forbidden"
   ) {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap flex-shrink-0">
         <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
         {stripEmojis(status) || "Warning"}
       </span>
@@ -173,7 +179,7 @@ export function StatusBadge({ status }: { status: string }) {
   }
   if (clean === "monitored" || clean === "info") {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 whitespace-nowrap flex-shrink-0">
         <Activity className="w-3.5 h-3.5 flex-shrink-0 text-sky-500" />
         {stripEmojis(status)}
       </span>
@@ -218,7 +224,7 @@ function getHeadingIcon(title: string) {
   if (t.includes("remediation") || t.includes("roadmap") || t.includes("action") || t.includes("recommend") || t.includes("item")) {
     return <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />;
   }
-  if (t.includes("summary") || t.includes("brief") || t.includes("report") || t.includes("matrix") || t.includes("overview")) {
+  if (t.includes("summary") || t.includes("brief") || t.includes("report") || t.includes("matrix") || t.includes("overview") || t.includes("target")) {
     return <FileText className="w-4 h-4 text-primary flex-shrink-0" />;
   }
   return <Shield className="w-4 h-4 text-primary flex-shrink-0" />;
@@ -263,7 +269,7 @@ function Inline({ text, cell = false }: { text: string; cell?: boolean }) {
           return (
             <code
               key={i}
-              className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-[12px] break-all border border-primary/20"
+              className="px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-[12px] border border-primary/20 whitespace-nowrap inline-block"
             >
               {p.slice(1, -1)}
             </code>
@@ -278,7 +284,7 @@ function Inline({ text, cell = false }: { text: string; cell?: boolean }) {
               href={linkMatch[2]}
               target="_blank"
               rel="noreferrer"
-              className="text-primary hover:underline font-medium inline-flex items-center gap-1"
+              className="text-primary hover:underline font-medium inline-flex items-center gap-1 whitespace-nowrap"
             >
               {linkMatch[1]}
             </a>
@@ -332,14 +338,14 @@ function Table({ rows }: { rows: string[] }) {
   }
 
   return (
-    <div className="my-4 overflow-x-auto rounded-xl border border-border/80 bg-surface/70 shadow-xs">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-surface/90 border-b border-border/80">
+    <div className="my-4 overflow-x-auto overflow-y-auto max-h-[560px] rounded-xl border border-border/80 bg-surface shadow-xs relative">
+      <table className="w-full text-sm border-collapse min-w-max">
+        <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur-md border-b border-border shadow-2xs">
+          <tr>
             {header.map((h, i) => (
               <th
                 key={i}
-                className="text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap"
+                className="text-left px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap bg-surface/95"
               >
                 <Inline text={h.replace(/[*_`]/g, "")} />
               </th>

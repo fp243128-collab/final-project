@@ -707,13 +707,13 @@ export default function DevSecOpsPage() {
             </div>
 
             {/* Tabs Header with Real Lucide Icons */}
-            <div className="flex flex-wrap gap-2 border-b border-border/40 pb-2">
+            <div className="flex gap-2 overflow-x-auto pb-2 border-b border-border/40 flex-nowrap scrollbar-none">
               {reportSections.map((sec, idx) => (
                 <button
                   key={idx}
                   onClick={() => setActiveTab(sec.title)}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    activeTab === sec.title || (activeTab === "Overview" && idx === 0)
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex-shrink-0 whitespace-nowrap ${
+                    activeTab === sec.title || ((!activeTab || activeTab === "Overview" || activeTab === "Target Overview") && idx === 0)
                       ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shadow-2xs"
                       : "text-muted hover:text-foreground hover:bg-surface border border-transparent"
                   }`}
@@ -724,8 +724,8 @@ export default function DevSecOpsPage() {
               ))}
             </div>
 
-            {/* Tab Body */}
-            <div className="p-5 rounded-xl bg-background border border-border/80 max-h-[640px] overflow-y-auto">
+            {/* Tab Body Data Sheet */}
+            <div className="p-4 sm:p-5 rounded-xl bg-background/80 border border-border/80">
               <MarkdownReport
                 content={
                   reportSections.find((s) => s.title === activeTab)?.content ||
