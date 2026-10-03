@@ -231,24 +231,55 @@ def audit_task_progress_callback(state: dict, task_output) -> None:
             "status": "complete"
         })
 
+def _run_crew_subprocess(payload: dict) -> dict:
+    crew_project_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "devsecops_ai_security_audit_tool_v6_crewai-project"
+    )
+    python_bin = os.path.join(crew_project_dir, ".venv", "bin", "python")
+    runner_script = os.path.join(crew_project_dir, "runner.py")
+    
+    cmd = [python_bin if os.path.exists(python_bin) else sys.executable, runner_script, json.dumps(payload)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=crew_project_dir)
+    
+    if proc.returncode != 0 and not proc.stdout:
+        return {"status": "failed", "error": proc.stderr or f"Process failed with exit code {proc.returncode}"}
+    
+    try:
+        # Extract last JSON line from stdout
+        lines = [line.strip() for line in proc.stdout.strip().split("\n") if line.strip()]
+        for line in reversed(lines):
+            if line.startswith("{") and line.endswith("}"):
+                return json.loads(line)
+        return {"status": "complete", "report": proc.stdout}
+    except Exception as e:
+        return {"status": "failed", "error": f"Failed to parse runner output: {str(e)}", "raw": proc.stdout}
+
 def _execute_full_audit(state: dict, target: str, provider: str) -> None:
     os.environ["AI_PROVIDER"] = provider
     with state["lock"]:
         state["status"] = "running"
-    try:
-        CrewClass = get_crew_class()
-        crew_instance = CrewClass()
-        crew_instance.progress_sink = lambda output: audit_task_progress_callback(state, output)
-        result = crew_instance.crew().kickoff(inputs={"target": target})
-        with state["lock"]:
-            state["report"] = getattr(result, "raw", str(result))
+    
+    res = _run_crew_subprocess({
+        "mode": "all",
+        "target": target,
+        "provider": provider
+    })
+    
+    with state["lock"]:
+        if res.get("status") == "complete":
+            state["report"] = res.get("report", "")
             state["status"] = "complete"
             state["completed"] = len(PIPELINE)
             state["active"] = "Assessment complete"
-    except Exception as error:
-        with state["lock"]:
+            state["events"].append({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "label": "Assessment complete",
+                "status": "complete"
+            })
+        else:
             state["status"] = "failed"
-            state["error"] = str(error)
+            state["error"] = res.get("error", "Crew execution failed")
 
 def _execute_guided_stage(state: dict, stage_index: int) -> None:
     os.environ["AI_PROVIDER"] = state["provider"]
@@ -256,25 +287,32 @@ def _execute_guided_stage(state: dict, stage_index: int) -> None:
         state["status"] = "running"
         state["active"] = PIPELINE[stage_index][0]
         state["completed"] = stage_index
-    try:
-        CrewClass = get_crew_class()
-        crew_instance = CrewClass()
-        crew_instance.progress_sink = lambda output: audit_task_progress_callback(state, output)
-        prior_reports = list(state["reports"].values())
-        result = crew_instance.stage_crew(stage_index, prior_reports).kickoff(
-            inputs={"target": state["target"]}
-        )
-        report = getattr(result, "raw", str(result))
-        with state["lock"]:
+    
+    prior_reports = list(state["reports"].values())
+    res = _run_crew_subprocess({
+        "mode": "guided",
+        "target": state["target"],
+        "provider": state["provider"],
+        "stage_index": stage_index,
+        "prior_reports": prior_reports
+    })
+    
+    with state["lock"]:
+        if res.get("status") == "complete":
+            report = res.get("report", "")
             state["report"] = report
             state["reports"][PIPELINE[stage_index][0]] = report
             state["status"] = "complete"
             state["completed"] = stage_index + 1
             state["active"] = PIPELINE[stage_index][0]
-    except Exception as error:
-        with state["lock"]:
+            state["events"].append({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "label": PIPELINE[stage_index][0],
+                "status": "complete"
+            })
+        else:
             state["status"] = "failed"
-            state["error"] = str(error)
+            state["error"] = res.get("error", "Stage execution failed")
 
 def _execute_remaining_stages(state: dict) -> None:
     with state["lock"]:
